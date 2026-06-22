@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Möbel</title>
+  <style>
+    /* Drafting / technical aesthetic: warm paper canvas, cool grid,
+       monospace for measurements, one accent for selection + primary action. */
+    :root {
+      --paper: #f4efe6;
+      --paper-edge: #e7e0d2;
+      --ink: #2b2a28;
+      --ink-soft: #6b6760;
+      --panel: #fbf8f2;
+      --border: #d9d2c4;
+      --grid-minor: #c9d6dd;
+      --grid-major: #9fb6c2;
+      --ruler: #6f8794;
+      --accent: #c2410c;
+      --accent-ink: #fff;
+      --wall: #3a3a42;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: var(--sans); color: var(--ink); background: var(--paper-edge); }
+    #app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+
+    /* --- toolbar --- */
+    #toolbar {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+    }
+    .brand { font-weight: 600; letter-spacing: 0.02em; margin-right: 4px; }
+    .sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+    .btn {
+      font: inherit; font-size: 13px; padding: 6px 10px; background: #fff; color: var(--ink);
+      border: 1px solid var(--border); border-radius: 6px; cursor: pointer; box-shadow: var(--shadow);
+    }
+    .btn:hover { background: #f3eee5; }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    .btn-danger { color: var(--accent); }
+    .btn-danger:hover { background: #f7e7e0; }
+    .spacer { flex: 1; }
+
+    /* icons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; }
+    .ic { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    summary.btn .ic:last-child { opacity: 0.55; margin-left: -2px; } /* dropdown caret */
+    .brand { display: inline-flex; align-items: center; gap: 7px; }
+    .brand .ic { width: 18px; height: 18px; color: var(--accent); }
+
+    .group { display: inline-flex; }
+    .group .btn { border-radius: 0; margin-left: -1px; }
+    .group .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+    .group .btn:last-child { border-radius: 0 6px 6px 0; }
+
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); cursor: pointer; user-select: none; }
+    .toggle input { accent-color: var(--accent); }
+
+    /* dropdown menus (native <details>) */
+    .menu { position: relative; }
+    .menu > summary { list-style: none; }
+    .menu > summary::-webkit-details-marker { display: none; }
+    .menu-pop {
+      position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+      display: flex; flex-direction: column; gap: 2px; min-width: 170px; padding: 6px;
+      background: #fff; border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+    }
+    .menu-item {
+      display: flex; align-items: center; gap: 8px;
+      font: inherit; font-size: 13px; text-align: left; color: var(--ink);
+      background: transparent; border: 0; border-radius: 6px; padding: 8px 9px; cursor: pointer;
+    }
+    .menu-item .ic { color: var(--ink-soft); }
+    .menu-item:hover { background: #f1ece2; }
+    #menu-add .menu-pop { left: 0; right: auto; }
+
+    /* --- workspace --- */
+    #workspace { display: grid; grid-template-columns: 1fr 260px; min-height: 0; }
+    #canvas { width: 100%; height: 100%; display: block; background: var(--paper); touch-action: none; cursor: default; }
+
+    .grid-minor { stroke: var(--grid-minor); stroke-width: 1; }
+    .grid-major { stroke: var(--grid-major); stroke-width: 1; }
+    .ruler-label { fill: var(--ruler); font-family: var(--mono); user-select: none; }
+
+    .obj { cursor: move; }
+    .obj-rect { stroke-width: 1.5; fill-opacity: 0.22; }
+    .obj-wall { fill-opacity: 1; }
+
+    .deco-swing { fill: none; stroke-width: 1; opacity: 0.5; pointer-events: none; }
+    .deco-leaf { fill: none; stroke-width: 2; pointer-events: none; }
+    .deco-glass { stroke-width: 1.5; pointer-events: none; }
+    .deco-shelf { stroke-width: 1; pointer-events: none; }
+
+    .obj-label { fill: var(--ink); font-family: var(--sans); font-weight: 600; pointer-events: none; user-select: none; }
+    .obj-dim { fill: var(--ink-soft); font-family: var(--mono); pointer-events: none; user-select: none; }
+
+    .selection { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+    .handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: nwse-resize; }
+    .rotate-handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: grab; }
+    .rotate-stem { stroke: var(--accent); stroke-width: 1; pointer-events: none; }
+
+    /* --- sidebar --- */
+    #sidebar { background: var(--panel); border-left: 1px solid var(--border); padding: 14px; overflow-y: auto; }
+    #sidebar h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0 0 12px; }
+    .legend { list-style: none; padding: 0; margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.8; }
+    .legend b { color: var(--ink); font-weight: 600; }
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12px; color: var(--ink-soft); }
+    .field[hidden] { display: none; }
+    .field input, .field select {
+      font: inherit; font-family: var(--mono); font-size: 13px; color: var(--ink);
+      padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
+    }
+    .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+    .swatch { width: 24px; height: 24px; border-radius: 5px; border: 2px solid transparent; cursor: pointer; padding: 0; }
+    .swatch.active { border-color: var(--ink); box-shadow: 0 0 0 2px #fff inset; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .actions .btn { flex: 1; }
+
+    /* --- status bar --- */
+    #statusbar { display: flex; gap: 20px; padding: 6px 12px; background: var(--panel); border-top: 1px solid var(--border); font-size: 12px; color: var(--ink-soft); }
+    .mono { font-family: var(--mono); color: var(--ink); }
+
+    @media (max-width: 640px) {
+      #workspace { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+      #sidebar { border-left: none; border-top: 1px solid var(--border); max-height: 40vh; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header id="toolbar">
+      <span class="brand">Möbel</span>
+      <span class="sep"></span>
+      <details class="menu" id="menu-add">
+        <summary class="btn">＋ Add ▾</summary>
+        <div class="menu-pop" id="add-menu-pop"></div>
+      </details>
+      <span class="sep"></span>
+      <div class="group" role="group" aria-label="Zoom">
+        <button id="btn-zoom-out" class="btn" aria-label="Zoom out">−</button>
+        <button id="btn-zoom-in" class="btn" aria-label="Zoom in">＋</button>
+        <button id="btn-fit" class="btn">Fit</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="snap-check" checked /> Snap 5&nbsp;cm</label>
+      <span class="spacer"></span>
+      <details class="menu" id="menu-file">
+        <summary class="btn">File ▾</summary>
+        <div class="menu-pop">
+          <button id="btn-save" class="menu-item">Save layout…</button>
+          <button id="btn-load" class="menu-item">Load layout…</button>
+          <button id="btn-clear" class="menu-item">Clear all</button>
+        </div>
+      </details>
+      <input id="file-input" type="file" accept="application/json,.json" hidden />
+    </header>
+
+    <div id="workspace">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+        <g id="viewport">
+          <g id="grid"></g>
+          <g id="objects"></g>
+          <g id="overlay"></g>
+        </g>
+      </svg>
+
+      <aside id="sidebar">
+        <div id="panel-empty">
+          <h2>No selection</h2>
+          <p>Click an object to edit its exact measurements.</p>
+          <ul class="legend">
+            <li><b>Add ▾</b> to place walls, doors, windows, furniture</li>
+            <li><b>Drag</b> empty space to pan</li>
+            <li><b>Scroll</b> to zoom toward the cursor</li>
+            <li><b>Drag</b> an object to move it</li>
+            <li><b>Corner handle</b> to resize · <b>knob</b> to rotate</li>
+            <li><b>Arrows</b> nudge (Shift = 1 cm) · <b>R</b> rotate 90°</li>
+            <li><b>Del</b> remove · <b>Ctrl/⌘+D</b> duplicate</li>
+            <li><b>Ctrl/⌘+S</b> save · <b>Esc</b> deselect</li>
+          </ul>
+        </div>
+
+        <div id="panel-editor" hidden>
+          <h2>Properties</h2>
+          <label class="field">
+            <span>Label</span>
+            <input id="f-label" type="text" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>Type</span>
+            <select id="f-type"></select>
+          </label>
+          <div class="field" id="f-flip-field" hidden>
+            <span>Swing</span>
+            <button id="f-flip" class="btn" type="button">Flip swing</button>
+          </div>
+          <div class="grid2">
+            <label class="field"><span>X (cm)</span><input id="f-x" type="number" step="1" /></label>
+            <label class="field"><span>Y (cm)</span><input id="f-y" type="number" step="1" /></label>
+            <label class="field"><span>W (cm)</span><input id="f-w" type="number" step="1" min="1" /></label>
+            <label class="field"><span>H (cm)</span><input id="f-h" type="number" step="1" min="1" /></label>
+          </div>
+          <label class="field">
+            <span>Rotation (°) · press R for 90°</span>
+            <input id="f-rot" type="number" step="15" />
+          </label>
+          <div class="field" id="f-color-field">
+            <span>Color</span>
+            <div id="f-colors" class="swatches"></div>
+          </div>
+          <div class="actions">
+            <button id="act-rotate" class="btn">Rotate 90°</button>
+            <button id="act-duplicate" class="btn">Duplicate</button>
+            <button id="act-delete" class="btn btn-danger">Delete</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <footer id="statusbar">
+      <span>Cursor: <span id="stat-cursor" class="mono">0, 0 cm</span></span>
+      <span>Zoom: <span id="stat-zoom" class="mono">100%</span></span>
+      <span>Objects: <span id="stat-count" class="mono">0</span></span>
+    </footer>
+  </div>
+
+<script>
+"use strict";
+/* ============================================================
+   Möbel — single self-contained file. No modules, no build, no server.
+   Open index.html directly in a browser.
+   Units: centimetres in world space. The #viewport transform maps cm -> px.
+   ============================================================ */
+
+/* ---------- type registry + state ---------- */
+const DEFAULT_WALL_COLOR = "#3a3a42";
+const DEFAULT_FURNITURE_COLOR = "#1b6cf0";
+const MIN_SIZE = 1, SNAP_STEP = 5;
+
+const TYPES = {
+  wall:       { name: "Wall",        w: 300, h: 12, color: DEFAULT_WALL_COLOR },
+  door:       { name: "Door",        w: 80,  h: 12, color: "#b07a3c" },
+  window:     { name: "Window",      w: 100, h: 12, color: "#3d8bd4" },
+  tallwindow: { name: "Tall window", w: 160, h: 12, color: "#1f9aad" },
+  bookshelf:  { name: "Bookshelf",   w: 80,  h: 28, color: "#8a6d3b" },
+  furniture:  { name: "Furniture",   w: 120, h: 60, color: DEFAULT_FURNITURE_COLOR },
+};
+const TYPE_KEYS = Object.keys(TYPES);
+const PALETTE = ["#1b6cf0","#16a34a","#ea580c","#dc2626","#7c3aed","#0891b2","#ca8a04","#3a3a42"];
+
+/* ---------- inline-SVG icons (no external deps) ---------- */
+const ICONS = {
+  logo: '<rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 13h7M10 13v8"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  chevron: '<path d="M6 9l6 6 6-6"/>',
+  fit: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  upload: '<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>',
+  trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  rotate: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  flip: '<path d="M12 3v18"/><path d="M16 8l4 4-4 4"/><path d="M8 8l-4 4 4 4"/>',
+  // object types (echo the on-canvas symbols)
+  wall: '<rect x="3" y="10" width="18" height="4" rx="1" fill="currentColor" stroke="none"/>',
+  door: '<path d="M6 6v14"/><path d="M6 20a14 14 0 0 0 14-14"/>',
+  window: '<rect x="3" y="8" width="18" height="8" rx="1"/><path d="M3 12h18"/>',
+  tallwindow: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 10h16M4 14h16"/>',
+  bookshelf: '<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M8 5v14M13 5v14"/>',
+  furniture: '<path d="M5 11a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2"/><path d="M5 11V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><path d="M6 19v1M18 19v1"/>',
+};
+function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`; }
+const TYPE_ICON = { wall: "wall", door: "door", window: "window", tallwindow: "tallwindow", bookshelf: "bookshelf", furniture: "furniture" };
+
+function isType(t) { return Object.prototype.hasOwnProperty.call(TYPES, t); }
+function spawnDefaults(type) {
+  const t = TYPES[isType(type) ? type : "furniture"];
+  return {
+    type: isType(type) ? type : "furniture",
+    w: t.w, h: t.h,
+    label: type === "furniture" ? "Furniture" : t.name,
+    color: t.color, flip: 0, rot: 0,
+  };
+}
+
+const state = {
+  objects: [], selectedId: null, nextId: 1, snap: true,
+  view: { panX: 0, panY: 0, zoom: 1 },   // screenPx = world * zoom + pan
+};
+
+function getSelected() { return state.objects.find((o) => o.id === state.selectedId) || null; }
+function getById(id) { return state.objects.find((o) => o.id === id) || null; }
+function select(id) { state.selectedId = id; }
+function addObject(partial) {
+  const o = { id: state.nextId++, type: "furniture", label: "", x: 0, y: 0, w: 60, h: 60,
+    color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, ...partial };
+  state.objects.push(o);
+  return o;
+}
+function deleteObject(id) {
+  const i = state.objects.findIndex((o) => o.id === id);
+  if (i === -1) return;
+  state.objects.splice(i, 1);
+  if (state.selectedId === id) state.selectedId = null;
+}
+function duplicateObject(id, off = 20) {
+  const s = getById(id);
+  if (!s) return null;
+  const c = { ...s, id: state.nextId++, x: s.x + off, y: s.y + off };
+  state.objects.push(c);
+  return c;
+}
+function replaceObjects(objs) {
+  state.objects = objs;
+  state.selectedId = null;
+  state.nextId = objs.reduce((m, o) => Math.max(m, o.id), 0) + 1;
+}
+function clearAll() { state.objects = []; state.selectedId = null; state.nextId = 1; }
+
+/* ---------- DOM refs ---------- */
+const SVG_NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const svg = $("canvas"), viewport = $("viewport");
+const gridGroup = $("grid"), objectsGroup = $("objects"), overlayGroup = $("overlay");
+const elObjCount = $("stat-count"), elZoom = $("stat-zoom"), elCursor = $("stat-cursor");
+
+/* ---------- geometry ---------- */
+function screenToWorld(clientX, clientY) {
+  const ctm = viewport.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = clientX; pt.y = clientY;
+  const w = pt.matrixTransform(ctm.inverse());
+  return { x: w.x, y: w.y };
+}
+function snapValue(v) { return state.snap ? Math.round(v / SNAP_STEP) * SNAP_STEP : v; }
+function rotatePoint(px, py, cx, cy, deg) {
+  const r = (deg * Math.PI) / 180, dx = px - cx, dy = py - cy;
+  return { x: cx + dx * Math.cos(r) - dy * Math.sin(r), y: cy + dx * Math.sin(r) + dy * Math.cos(r) };
+}
+function angleDeg(px, py, cx, cy) { return (Math.atan2(py - cy, px - cx) * 180) / Math.PI; }
+function contentBounds(objs) {
+  if (!objs.length) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const o of objs) {
+    minX = Math.min(minX, o.x); minY = Math.min(minY, o.y);
+    maxX = Math.max(maxX, o.x + o.w); maxY = Math.max(maxY, o.y + o.h);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/* ---------- render ---------- */
+const LABEL_PX = 13, DIM_PX = 11, HANDLE_PX = 10, RULER_PX = 11;
+function el(name, attrs) {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const k in attrs) node.setAttribute(k, attrs[k]);
+  return node;
+}
+function clearNode(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+function applyViewTransform() {
+  const { panX, panY, zoom } = state.view;
+  viewport.setAttribute("transform", `translate(${panX} ${panY}) scale(${zoom})`);
+}
+function visibleWorld() {
+  const { panX, panY, zoom } = state.view;
+  const W = svg.clientWidth, H = svg.clientHeight;
+  return { left: (0 - panX) / zoom, right: (W - panX) / zoom, top: (0 - panY) / zoom, bottom: (H - panY) / zoom };
+}
+function drawGrid() {
+  clearNode(gridGroup);
+  const { zoom } = state.view;
+  const v = visibleWorld();
+  const minor = 50, major = 100;
+  const drawMinor = minor * zoom >= 6;
+  const startX = Math.floor(v.left / minor) * minor;
+  const startY = Math.floor(v.top / minor) * minor;
+  for (let x = startX; x <= v.right; x += minor) {
+    const isMajor = Math.round(x) % major === 0;
+    if (!isMajor && !drawMinor) continue;
+    gridGroup.appendChild(el("line", { x1: x, y1: v.top, x2: x, y2: v.bottom, class: isMajor ? "grid-major" : "grid-minor", "vector-effect": "non-scaling-stroke" }));
+  }
+  for (let y = startY; y <= v.bottom; y += minor) {
+    const isMajor = Math.round(y) % major === 0;
+    if (!isMajor && !drawMinor) continue;
+    gridGroup.appendChild(el("line", { x1: v.left, y1: y, x2: v.right, y2: y, class: isMajor ? "grid-major" : "grid-minor", "vector-effect": "non-scaling-stroke" }));
+  }
+  const fs = RULER_PX / zoom, padX = 4 / zoom, padY = RULER_PX / zoom + 2 / zoom;
+  for (let x = startX; x <= v.right; x += major) {
+    if (major * zoom < 40) break;
+    const t = el("text", { x: x + padX, y: v.top + padY, class: "ruler-label", "font-size": fs });
+    t.textContent = `${(x / 100).toFixed(x % 100 ? 1 : 0)} m`;
+    gridGroup.appendChild(t);
+  }
+  for (let y = startY; y <= v.bottom; y += major) {
+    if (major * zoom < 40) break;
+    if (Math.round(y) === 0) continue;
+    const t = el("text", { x: v.left + padX, y: y + padY, class: "ruler-label", "font-size": fs });
+    t.textContent = `${(y / 100).toFixed(y % 100 ? 1 : 0)} m`;
+    gridGroup.appendChild(t);
+  }
+}
+// type-specific symbols, in world coords; strokes follow the object colour.
+function decorate(o) {
+  const nodes = [];
+  const X = o.x, Y = o.y, horiz = o.w >= o.h;
+  const line = (cls, x1, y1, x2, y2) => el("line", { class: cls, x1, y1, x2, y2, stroke: o.color, "vector-effect": "non-scaling-stroke" });
+  const path = (cls, d) => el("path", { class: cls, d, stroke: o.color, "vector-effect": "non-scaling-stroke" });
+  if (o.type === "door") {
+    const f = o.flip || 0;
+    if (horiz) {
+      const D = o.w, right = f & 1, down = f & 2;
+      const hx = right ? o.w : 0, hy = down ? o.h : 0;
+      const ty = down ? hy + D : hy - D, fx = right ? 0 : o.w;
+      const sweep = (right ? 1 : 0) ^ (down ? 1 : 0);
+      nodes.push(path("deco-leaf", `M ${X + hx} ${Y + hy} L ${X + hx} ${Y + ty}`));
+      nodes.push(path("deco-swing", `M ${X + hx} ${Y + ty} A ${D} ${D} 0 0 ${sweep} ${X + fx} ${Y + hy}`));
+    } else {
+      const D = o.h, bottom = f & 1, rightS = f & 2;
+      const hy = bottom ? o.h : 0, hx = rightS ? o.w : 0;
+      const tx = rightS ? hx + D : hx - D, fy = bottom ? 0 : o.h;
+      const sweep = (bottom ? 1 : 0) ^ (rightS ? 1 : 0);
+      nodes.push(path("deco-leaf", `M ${X + hx} ${Y + hy} L ${X + tx} ${Y + hy}`));
+      nodes.push(path("deco-swing", `M ${X + tx} ${Y + hy} A ${D} ${D} 0 0 ${sweep} ${X + hx} ${Y + fy}`));
+    }
+  } else if (o.type === "window") {
+    if (horiz) nodes.push(line("deco-glass", X, Y + o.h / 2, X + o.w, Y + o.h / 2));
+    else nodes.push(line("deco-glass", X + o.w / 2, Y, X + o.w / 2, Y + o.h));
+  } else if (o.type === "tallwindow") {
+    if (horiz) { const a = o.h * 0.35, b = o.h * 0.65; nodes.push(line("deco-glass", X, Y + a, X + o.w, Y + a)); nodes.push(line("deco-glass", X, Y + b, X + o.w, Y + b)); }
+    else { const a = o.w * 0.35, b = o.w * 0.65; nodes.push(line("deco-glass", X + a, Y, X + a, Y + o.h)); nodes.push(line("deco-glass", X + b, Y, X + b, Y + o.h)); }
+  } else if (o.type === "bookshelf") {
+    const n = 3;
+    for (let i = 1; i < n; i++) {
+      if (horiz) { const x = (o.w * i) / n; nodes.push(line("deco-shelf", X + x, Y, X + x, Y + o.h)); }
+      else { const y = (o.h * i) / n; nodes.push(line("deco-shelf", X, Y + y, X + o.w, Y + y)); }
+    }
+  }
+  return nodes;
+}
+function renderObjects() {
+  clearNode(objectsGroup);
+  const { zoom } = state.view;
+  const labelFs = LABEL_PX / zoom, dimFs = DIM_PX / zoom;
+  for (const o of state.objects) {
+    const g = el("g", { class: "obj", "data-id": o.id });
+    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+    if (o.rot) g.setAttribute("transform", `rotate(${o.rot} ${cx} ${cy})`);
+    const isFurniture = o.type === "furniture";
+    const rect = el("rect", {
+      x: o.x, y: o.y, width: o.w, height: o.h,
+      rx: isFurniture ? 2 : 0, ry: isFurniture ? 2 : 0,
+      class: `obj-rect obj-${o.type}`, fill: o.color, stroke: o.color,
+      "vector-effect": "non-scaling-stroke",
+    });
+    g.appendChild(rect);
+    for (const node of decorate(o)) g.appendChild(node);
+    if (o.label) {
+      const label = el("text", { x: cx, y: cy, class: "obj-label", "font-size": labelFs, "text-anchor": "middle", "dominant-baseline": "central" });
+      label.textContent = o.label;
+      g.appendChild(label);
+    }
+    if (o.id === state.selectedId) {
+      const dim = el("text", {
+        x: cx, y: cy + (o.label ? labelFs * 0.9 : 0), class: "obj-dim", "font-size": dimFs,
+        "text-anchor": "middle", "dominant-baseline": o.label ? "hanging" : "central",
+      });
+      dim.textContent = `${Math.round(o.w)}×${Math.round(o.h)}`;
+      g.appendChild(dim);
+    }
+    objectsGroup.appendChild(g);
+  }
+}
+function renderOverlay() {
+  clearNode(overlayGroup);
+  const sel = getSelected();
+  if (!sel) return;
+  const { zoom } = state.view;
+  const cx = sel.x + sel.w / 2, cy = sel.y + sel.h / 2;
+  const g = el("g", {});
+  if (sel.rot) g.setAttribute("transform", `rotate(${sel.rot} ${cx} ${cy})`);
+  g.appendChild(el("rect", { x: sel.x, y: sel.y, width: sel.w, height: sel.h, class: "selection", fill: "none", "vector-effect": "non-scaling-stroke" }));
+  const hs = HANDLE_PX / zoom;
+  g.appendChild(el("rect", { x: sel.x + sel.w - hs / 2, y: sel.y + sel.h - hs / 2, width: hs, height: hs, class: "handle", "data-handle": "se" }));
+  const stem = 22 / zoom, ry = sel.y - stem;
+  g.appendChild(el("line", { x1: cx, y1: sel.y, x2: cx, y2: ry, class: "rotate-stem", "vector-effect": "non-scaling-stroke" }));
+  g.appendChild(el("circle", { cx, cy: ry, r: hs * 0.6, class: "rotate-handle", "data-handle": "rot" }));
+  overlayGroup.appendChild(g);
+}
+function updateStatus() {
+  elObjCount.textContent = String(state.objects.length);
+  elZoom.textContent = `${Math.round(state.view.zoom * 100)}%`;
+}
+function render() { applyViewTransform(); drawGrid(); renderObjects(); renderOverlay(); updateStatus(); }
+function onChange() { render(); syncPanel(); }
+
+/* ---------- view helpers ---------- */
+const MIN_ZOOM = 0.05, MAX_ZOOM = 40;
+const clampZoom = (z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+function viewCenterWorld() {
+  const { panX, panY, zoom } = state.view;
+  return { x: (svg.clientWidth / 2 - panX) / zoom, y: (svg.clientHeight / 2 - panY) / zoom };
+}
+function zoomBy(factor) {
+  const { zoom, panX, panY } = state.view;
+  const sx = svg.clientWidth / 2, sy = svg.clientHeight / 2;
+  const wx = (sx - panX) / zoom, wy = (sy - panY) / zoom;
+  const nz = clampZoom(zoom * factor);
+  state.view.zoom = nz;
+  state.view.panX = sx - wx * nz;
+  state.view.panY = sy - wy * nz;
+  onChange();
+}
+function fitView() {
+  const b = contentBounds(state.objects);
+  const W = svg.clientWidth, H = svg.clientHeight;
+  if (!b) { state.view = { zoom: 1, panX: W / 2, panY: H / 2 }; onChange(); return; }
+  const pad = 60;
+  const cw = Math.max(1, b.maxX - b.minX), ch = Math.max(1, b.maxY - b.minY);
+  const z = clampZoom(Math.min((W - 2 * pad) / cw, (H - 2 * pad) / ch));
+  state.view.zoom = z;
+  state.view.panX = W / 2 - ((b.minX + b.maxX) / 2) * z;
+  state.view.panY = H / 2 - ((b.minY + b.maxY) / 2) * z;
+  onChange();
+}
+function spawn(type) {
+  const c = viewCenterWorld();
+  const d = spawnDefaults(type);
+  const sn = (v) => Math.round(v / SNAP_STEP) * SNAP_STEP;
+  const o = addObject({ ...d, x: sn(c.x - d.w / 2), y: sn(c.y - d.h / 2) });
+  select(o.id);
+  onChange();
+}
+
+/* ---------- pointer + keyboard interaction ---------- */
+let drag = null;
+function typingInField() {
+  const a = document.activeElement;
+  return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable);
+}
+svg.addEventListener("pointerdown", (e) => {
+  const world = screenToWorld(e.clientX, e.clientY);
+  if (!world) return;
+  const handle = e.target.closest("[data-handle]");
+  const objNode = e.target.closest(".obj");
+  if (handle && getSelected()) {
+    const o = getSelected();
+    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+    if (handle.getAttribute("data-handle") === "rot") {
+      drag = { mode: "rotate", id: o.id, cx, cy, startRot: o.rot || 0, startAngle: angleDeg(world.x, world.y, cx, cy) };
+    } else {
+      const anchor = rotatePoint(o.x, o.y, cx, cy, o.rot || 0);
+      drag = { mode: "resize", id: o.id, rot: o.rot || 0, anchor };
+    }
+  } else if (objNode) {
+    const id = Number(objNode.getAttribute("data-id"));
+    const o = getById(id);
+    select(id);
+    drag = { mode: "move", id, dx: world.x - o.x, dy: world.y - o.y };
+    onChange();
+  } else {
+    select(null);
+    drag = { mode: "pan", startX: e.clientX, startY: e.clientY, panX: state.view.panX, panY: state.view.panY };
+    onChange();
+  }
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener("pointermove", (e) => {
+  const world = screenToWorld(e.clientX, e.clientY);
+  if (world) elCursor.textContent = `${Math.round(world.x)}, ${Math.round(world.y)} cm`;
+  if (!drag) return;
+  if (drag.mode === "pan") {
+    state.view.panX = drag.panX + (e.clientX - drag.startX);
+    state.view.panY = drag.panY + (e.clientY - drag.startY);
+    onChange();
+    return;
+  }
+  const o = getById(drag.id);
+  if (!o || !world) return;
+  if (drag.mode === "move") {
+    o.x = snapValue(world.x - drag.dx);
+    o.y = snapValue(world.y - drag.dy);
+    onChange();
+  } else if (drag.mode === "resize") {
+    const a = drag.anchor, r = (-drag.rot * Math.PI) / 180;
+    const dx = world.x - a.x, dy = world.y - a.y;
+    o.w = Math.max(MIN_SIZE, snapValue(dx * Math.cos(r) - dy * Math.sin(r)));
+    o.h = Math.max(MIN_SIZE, snapValue(dx * Math.sin(r) + dy * Math.cos(r)));
+    const r2 = (drag.rot * Math.PI) / 180;
+    const cwx = (o.w / 2) * Math.cos(r2) - (o.h / 2) * Math.sin(r2);
+    const cwy = (o.w / 2) * Math.sin(r2) + (o.h / 2) * Math.cos(r2);
+    o.x = a.x + cwx - o.w / 2;
+    o.y = a.y + cwy - o.h / 2;
+    onChange();
+  } else if (drag.mode === "rotate") {
+    const now = angleDeg(world.x, world.y, drag.cx, drag.cy);
+    let rot = drag.startRot + (now - drag.startAngle);
+    if (!e.shiftKey) rot = Math.round(rot / 15) * 15;
+    o.rot = ((rot % 360) + 360) % 360;
+    onChange();
+  }
+});
+function endDrag(e) {
+  if (drag && svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+  drag = null;
+}
+svg.addEventListener("pointerup", endDrag);
+svg.addEventListener("pointercancel", endDrag);
+svg.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const { zoom, panX, panY } = state.view;
+  const rect = svg.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  const nz = clampZoom(zoom * factor);
+  const wx = (sx - panX) / zoom, wy = (sy - panY) / zoom;
+  state.view.zoom = nz;
+  state.view.panX = sx - wx * nz;
+  state.view.panY = sy - wy * nz;
+  onChange();
+}, { passive: false });
+
+window.addEventListener("keydown", (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); save(); return; }
+  if (typingInField()) return;
+  const sel = getSelected();
+  if (mod && e.key.toLowerCase() === "d") { e.preventDefault(); if (sel) { const c = duplicateObject(sel.id); if (c) select(c.id); onChange(); } return; }
+  if (e.key === "Delete" || e.key === "Backspace") { if (sel) { e.preventDefault(); deleteObject(sel.id); onChange(); } return; }
+  if (e.key === "Escape") { select(null); onChange(); return; }
+  if (sel && !mod && e.key.toLowerCase() === "r") { sel.rot = ((sel.rot || 0) + 90) % 360; onChange(); return; }
+  if (sel && e.key.startsWith("Arrow")) {
+    e.preventDefault();
+    const step = e.shiftKey ? 1 : 5;
+    if (e.key === "ArrowLeft") sel.x -= step;
+    else if (e.key === "ArrowRight") sel.x += step;
+    else if (e.key === "ArrowUp") sel.y -= step;
+    else if (e.key === "ArrowDown") sel.y += step;
+    onChange();
+  }
+});
+
+/* ---------- properties sidebar ---------- */
+const fType = $("f-type"), fColors = $("f-colors");
+function commit(key, value) { const sel = getSelected(); if (!sel) return; sel[key] = value; onChange(); }
+
+for (const key of TYPE_KEYS) {
+  const opt = document.createElement("option");
+  opt.value = key; opt.textContent = TYPES[key].name;
+  fType.appendChild(opt);
+}
+for (const c of PALETTE) {
+  const b = document.createElement("button");
+  b.className = "swatch"; b.style.background = c; b.title = c;
+  b.addEventListener("click", () => commit("color", c));
+  fColors.appendChild(b);
+}
+$("f-label").addEventListener("input", (e) => commit("label", e.target.value));
+fType.addEventListener("change", (e) => commit("type", e.target.value));
+$("f-flip").addEventListener("click", () => { const s = getSelected(); if (s) commit("flip", ((s.flip || 0) + 1) % 4); });
+for (const key of ["x", "y", "w", "h"]) {
+  $("f-" + key).addEventListener("input", (e) => {
+    let v = parseFloat(e.target.value);
+    if (Number.isNaN(v)) return;
+    if (key === "w" || key === "h") v = Math.max(MIN_SIZE, v);
+    commit(key, v);
+  });
+}
+$("f-rot").addEventListener("input", (e) => {
+  const v = parseFloat(e.target.value);
+  if (Number.isNaN(v)) return;
+  commit("rot", ((v % 360) + 360) % 360);
+});
+function syncPanel() {
+  const sel = getSelected();
+  const active = document.activeElement;
+  const panelEmpty = $("panel-empty"), panelEditor = $("panel-editor");
+  if (!sel) { panelEmpty.hidden = false; panelEditor.hidden = true; return; }
+  panelEmpty.hidden = true; panelEditor.hidden = false;
+  const set = (el2, v) => { if (el2 !== active) el2.value = v; };
+  set($("f-label"), sel.label);
+  if (fType !== active) fType.value = sel.type;
+  set($("f-x"), Math.round(sel.x));
+  set($("f-y"), Math.round(sel.y));
+  set($("f-w"), Math.round(sel.w));
+  set($("f-h"), Math.round(sel.h));
+  set($("f-rot"), Math.round(sel.rot || 0));
+  $("f-flip-field").hidden = sel.type !== "door";
+  for (const b of fColors.children) b.classList.toggle("active", b.title.toLowerCase() === String(sel.color).toLowerCase());
+}
+
+/* ---------- save / load ---------- */
+function save() {
+  const doc = { app: "moebel", version: 2, units: "cm", objects: state.objects };
+  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "layout.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function num(v, fallback) { const n = typeof v === "string" ? parseFloat(v) : v; return Number.isFinite(n) ? n : fallback; }
+function sanitize(raw, fallbackId) {
+  if (!raw || typeof raw !== "object") return null;
+  const type = isType(raw.type) ? raw.type : "furniture";
+  const def = TYPES[type];
+  return {
+    id: Number.isInteger(raw.id) ? raw.id : fallbackId,
+    type,
+    label: typeof raw.label === "string" ? raw.label : "",
+    x: Math.round(num(raw.x, 0)), y: Math.round(num(raw.y, 0)),
+    w: Math.max(MIN_SIZE, Math.round(num(raw.w, def.w))),
+    h: Math.max(MIN_SIZE, Math.round(num(raw.h, def.h))),
+    color: typeof raw.color === "string" && raw.color ? raw.color : def.color,
+    flip: [0, 1, 2, 3].includes(raw.flip) ? raw.flip : 0,
+    rot: Number.isFinite(num(raw.rot, NaN)) ? ((Math.round(num(raw.rot, 0)) % 360) + 360) % 360 : 0,
+  };
+}
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const doc = JSON.parse(String(reader.result));
+      if (!doc || !Array.isArray(doc.objects)) throw new Error("Missing an 'objects' array.");
+      const objs = [];
+      doc.objects.forEach((raw, i) => { const o = sanitize(raw, i + 1); if (o) objs.push(o); });
+      replaceObjects(objs);
+      fitView();
+    } catch (err) { alert(`Could not load layout: ${err.message || err}`); }
+  };
+  reader.onerror = () => alert("Could not read file.");
+  reader.readAsText(file);
+}
+
+/* ---------- toolbar wiring ---------- */
+const addPop = $("add-menu-pop");
+for (const key of TYPE_KEYS) {
+  const b = document.createElement("button");
+  b.className = "menu-item";
+  b.innerHTML = icon(TYPE_ICON[key]) + `<span>${TYPES[key].name}</span>`;
+  b.addEventListener("click", () => spawn(key));
+  addPop.appendChild(b);
+}
+
+// Decorate the static controls with icons + accessible labels.
+document.querySelector(".brand").innerHTML = icon("logo") + "<span>Möbel</span>";
+$("menu-add").querySelector("summary").innerHTML = icon("plus") + "<span>Add</span>" + icon("chevron");
+$("menu-file").querySelector("summary").innerHTML = icon("file") + "<span>File</span>" + icon("chevron");
+$("btn-zoom-out").innerHTML = icon("minus"); $("btn-zoom-out").title = "Zoom out";
+$("btn-zoom-in").innerHTML = icon("plus"); $("btn-zoom-in").title = "Zoom in";
+$("btn-fit").innerHTML = icon("fit") + "<span>Fit</span>"; $("btn-fit").title = "Fit all to view";
+$("btn-save").innerHTML = icon("download") + "<span>Save layout</span>";
+$("btn-load").innerHTML = icon("upload") + "<span>Load layout</span>";
+$("btn-clear").innerHTML = icon("trash") + "<span>Clear all</span>";
+$("act-rotate").innerHTML = icon("rotate") + "<span>Rotate</span>"; $("act-rotate").title = "Rotate 90°";
+$("act-duplicate").innerHTML = icon("copy") + "<span>Duplicate</span>";
+$("act-delete").innerHTML = icon("trash") + "<span>Delete</span>";
+$("f-flip").innerHTML = icon("flip") + "<span>Flip swing</span>";
+$("act-rotate").addEventListener("click", () => { const s = getSelected(); if (s) { s.rot = ((s.rot || 0) + 90) % 360; onChange(); } });
+$("act-duplicate").addEventListener("click", () => { const s = getSelected(); if (s) { const c = duplicateObject(s.id); if (c) select(c.id); onChange(); } });
+$("act-delete").addEventListener("click", () => { const s = getSelected(); if (s) { deleteObject(s.id); onChange(); } });
+
+const snapCheck = $("snap-check");
+snapCheck.checked = state.snap;
+snapCheck.addEventListener("change", () => { state.snap = snapCheck.checked; });
+
+$("btn-zoom-in").addEventListener("click", () => zoomBy(1.2));
+$("btn-zoom-out").addEventListener("click", () => zoomBy(1 / 1.2));
+$("btn-fit").addEventListener("click", fitView);
+$("btn-save").addEventListener("click", save);
+const fileInput = $("file-input");
+$("btn-load").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => { const f = fileInput.files[0]; if (f) loadFile(f); fileInput.value = ""; });
+$("btn-clear").addEventListener("click", () => {
+  if (state.objects.length && !confirm("Clear all objects? This cannot be undone.")) return;
+  clearAll(); onChange();
+});
+
+// dropdown menus: close after picking an item and when clicking outside.
+for (const item of document.querySelectorAll(".menu-item")) {
+  item.addEventListener("click", () => { const d = item.closest("details"); if (d) d.open = false; });
+}
+document.addEventListener("click", (e) => {
+  for (const d of document.querySelectorAll("details.menu[open]")) if (!d.contains(e.target)) d.open = false;
+});
+window.addEventListener("resize", () => render());
+
+/* ---------- seed: a small room so the canvas isn't empty ---------- */
+function seed() {
+  const place = (type, x, y, extra = {}) => addObject({ ...spawnDefaults(type), x, y, ...extra });
+  place("wall", 0, 0, { w: 400, h: 12, label: "" });
+  place("wall", 0, 288, { w: 400, h: 12, label: "" });
+  place("wall", 0, 0, { w: 12, h: 300, label: "" });
+  place("wall", 388, 0, { w: 12, h: 300, label: "" });
+  place("door", 150, 288, { w: 80, h: 12, label: "", flip: 0 });
+  place("window", 130, 0, { w: 120, h: 12, label: "" });
+  place("furniture", 40, 40, { w: 140, h: 60, label: "Desk", color: "#1b6cf0" });
+  place("furniture", 95, 120, { w: 45, h: 45, label: "Chair", color: "#16a34a" });
+  place("bookshelf", 296, 30, { w: 92, h: 28, label: "Shelf" });
+}
+seed();
+fitView();
+</script>
+</body>
+</html>
