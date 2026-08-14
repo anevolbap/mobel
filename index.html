@@ -105,6 +105,8 @@
     .deco-shelf { stroke-width: 1; pointer-events: none; }
 
     .obj-room { fill-opacity: 0.07; stroke-dasharray: 9 5; }
+    /* a walled room is grabbed by its walls, so dragging its floor still pans */
+    .room-floor { pointer-events: none; }
     .obj-label { fill: var(--ink); font-family: var(--sans); font-weight: 600; pointer-events: none; user-select: none; }
     .obj-dim { fill: var(--ink-soft); font-family: var(--mono); pointer-events: none; user-select: none; }
 
@@ -130,6 +132,7 @@
     }
     .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+    .grid2[hidden] { display: none; }
     .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
     .swatch { width: 24px; height: 24px; border-radius: 5px; border: 2px solid transparent; cursor: pointer; padding: 0; }
     .swatch.active { border-color: var(--ink); box-shadow: 0 0 0 2px #fff inset; }
@@ -251,10 +254,14 @@
             <span>Rotation (°) · press R for 90°</span>
             <input id="f-rot" type="number" step="15" />
           </label>
-          <div class="grid2">
+          <div class="grid2" id="f-clear-row">
             <label class="field"><span>Clearance (cm)</span><input id="f-clear" type="number" step="5" min="0" /></label>
             <label class="field"><span>On side</span><select id="f-face"></select></label>
           </div>
+          <label class="field" id="f-wall-field" hidden>
+            <span>Wall thickness (cm) · 0 for none</span>
+            <input id="f-wall" type="number" step="1" min="0" />
+          </label>
           <div class="field" id="f-color-field">
             <span>Color</span>
             <div id="f-colors" class="swatches"></div>
@@ -296,7 +303,7 @@ const SNAP_DIST = 8; // px: magnet pull distance to other objects' edges
 // object's own frame, so it turns with the object.
 const FACES = { N: "Top", E: "Right", S: "Bottom", W: "Left" };
 const TYPES = {
-  room:       { name: "Room",        w: 400, h: 300, color: "#6f8794" },
+  room:       { name: "Room",        w: 400, h: 300, color: "#6f8794", wall: 15 },
   wall:       { name: "Wall",        w: 300, h: 12,  color: DEFAULT_WALL_COLOR },
   door:       { name: "Door",        w: 80,  h: 12,  color: "#b07a3c" },
   window:     { name: "Window",      w: 100, h: 12,  color: "#3d8bd4" },
@@ -361,7 +368,7 @@ function spawnDefaults(type) {
     w: t.w, h: t.h,
     label: type === "furniture" ? "Furniture" : t.name,
     color: t.color, flip: 0, rot: 0,
-    clear: t.clear || 0, face: "S",
+    clear: t.clear || 0, face: "S", wall: t.wall || 0,
   };
 }
 
@@ -386,7 +393,7 @@ function toggleSelect(id) {
 }
 function addObject(partial) {
   const o = { id: state.nextId++, type: "furniture", label: "", x: 0, y: 0, w: 60, h: 60,
-    color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, clear: 0, face: "S", ...partial };
+    color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, clear: 0, face: "S", wall: 0, ...partial };
   state.objects.push(o);
   return o;
 }
@@ -505,6 +512,20 @@ function aabb(o) {
   }
   return { x: o.x, y: o.y, w: o.w, h: o.h };
 }
+// What a target offers to snap to: its edges and centre, plus, for a room, the
+// inner and outer face of each wall, so furniture lands against the wall and
+// not on its centreline.
+function snapEdges(t) {
+  const b = aabb(t);
+  const X = [b.x, b.x + b.w / 2, b.x + b.w], Y = [b.y, b.y + b.h / 2, b.y + b.h];
+  const wt = t.type === "room" ? t.wall || 0 : 0;
+  if (wt > 0) {
+    const h2 = wt / 2;
+    X.push(b.x - h2, b.x + h2, b.x + b.w - h2, b.x + b.w + h2);
+    Y.push(b.y - h2, b.y + h2, b.y + b.h - h2, b.y + b.h + h2);
+  }
+  return { X, Y };
+}
 // Magnet: pull a moving object's edges/centres onto nearby objects'. Returns
 // snapped top-left per axis (null when nothing is within range). Shift by the
 // found delta works directly because aabb() is translation-equivariant.
@@ -516,9 +537,7 @@ function magnetEdges(o, x, y) {
   let sx = null, sy = null, bx = Infinity, by = Infinity, gx = null, gy = null;
   for (const t of state.objects) {
     if (isSelected(t.id)) continue;
-    const tb = aabb(t);
-    const tX = [tb.x, tb.x + tb.w / 2, tb.x + tb.w];
-    const tY = [tb.y, tb.y + tb.h / 2, tb.y + tb.h];
+    const { X: tX, Y: tY } = snapEdges(t);
     for (const ex of movX) for (const tx of tX) { const d = tx - ex, ad = Math.abs(d); if (ad <= thr && ad < bx) { bx = ad; sx = x + d; gx = tx; } }
     for (const ey of movY) for (const ty of tY) { const d = ty - ey, ad = Math.abs(d); if (ad <= thr && ad < by) { by = ad; sy = y + d; gy = ty; } }
   }
@@ -531,9 +550,9 @@ function magnetResize(o) {
   let br = null, bb = null, bestR = Infinity, bestB = Infinity;
   for (const t of state.objects) {
     if (t.id === o.id) continue;
-    const tb = aabb(t);
-    for (const tx of [tb.x, tb.x + tb.w]) { const d = Math.abs(tx - right); if (d <= thr && d < bestR) { bestR = d; br = tx; } }
-    for (const ty of [tb.y, tb.y + tb.h]) { const d = Math.abs(ty - bottom); if (d <= thr && d < bestB) { bestB = d; bb = ty; } }
+    const { X: tX, Y: tY } = snapEdges(t);
+    for (const tx of tX) { const d = Math.abs(tx - right); if (d <= thr && d < bestR) { bestR = d; br = tx; } }
+    for (const ty of tY) { const d = Math.abs(ty - bottom); if (d <= thr && d < bestB) { bestB = d; bb = ty; } }
   }
   if (br !== null) o.w = Math.max(MIN_SIZE, Math.round(br - o.x));
   if (bb !== null) o.h = Math.max(MIN_SIZE, Math.round(bb - o.y));
@@ -543,9 +562,9 @@ function magnetPoint(x, y) {
   const thr = SNAP_DIST / state.view.zoom;
   let bx = Infinity, by = Infinity, sx = x, sy = y;
   for (const t of state.objects) {
-    const b = aabb(t);
-    for (const tx of [b.x, b.x + b.w]) { const d = Math.abs(tx - x); if (d <= thr && d < bx) { bx = d; sx = tx; } }
-    for (const ty of [b.y, b.y + b.h]) { const d = Math.abs(ty - y); if (d <= thr && d < by) { by = d; sy = ty; } }
+    const { X, Y } = snapEdges(t);
+    for (const tx of X) { const d = Math.abs(tx - x); if (d <= thr && d < bx) { bx = d; sx = tx; } }
+    for (const ty of Y) { const d = Math.abs(ty - y); if (d <= thr && d < by) { by = d; sy = ty; } }
   }
   return { x: sx, y: sy };
 }
@@ -628,18 +647,84 @@ function clearanceRect(o) {
   if (f === "W") return { x: o.x - c, y: o.y, w: c, h: o.h };
   return { x: o.x + o.w, y: o.y, w: c, h: o.h };
 }
-// Same band in world coords. Exact at 0/90/180/270; footprint at other angles.
-function clearanceWorld(o) {
-  const cr = clearanceRect(o);
-  if (!cr) return null;
-  const rot = o.rot || 0;
-  if (!rot) return cr;
-  const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
-  const pts = [[cr.x, cr.y], [cr.x + cr.w, cr.y], [cr.x + cr.w, cr.y + cr.h], [cr.x, cr.y + cr.h]]
-    .map(([px, py]) => rotatePoint(px, py, cx, cy, rot));
+// Turn a rect from an object's own frame into a world-space box. Exact at
+// 0/90/180/270; footprint at other angles.
+function rotRectAabb(r, cx, cy, deg) {
+  if (!deg) return r;
+  const pts = [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]]
+    .map(([px, py]) => rotatePoint(px, py, cx, cy, deg));
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const minX = Math.min(...xs), minY = Math.min(...ys);
   return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
+}
+function clearanceWorld(o) {
+  const cr = clearanceRect(o);
+  if (!cr) return null;
+  return rotRectAabb(cr, o.x + o.w / 2, o.y + o.h / 2, o.rot || 0);
+}
+
+/* ---------- room walls ---------- */
+// A room carries its own walls, centred on the rectangle, so two rooms placed
+// edge to edge share one wall. Bands are in the room's own frame; the corners
+// belong to the horizontal ones.
+const OPENINGS = new Set(["door", "window", "tallwindow"]);
+function roomBands(o) {
+  const t = o.type === "room" ? o.wall || 0 : 0;
+  if (t <= 0) return [];
+  const h2 = t / 2;
+  return [
+    { x: o.x - h2, y: o.y - h2, w: o.w + t, h: t, axis: "x" },
+    { x: o.x - h2, y: o.y + o.h - h2, w: o.w + t, h: t, axis: "x" },
+    { x: o.x - h2, y: o.y + h2, w: t, h: o.h - t, axis: "y" },
+    { x: o.x + o.w - h2, y: o.y + h2, w: t, h: o.h - t, axis: "y" },
+  ].filter((b) => b.w > 0 && b.h > 0);
+}
+function roomBandsWorld(o) {
+  const cx = o.x + o.w / 2, cy = o.y + o.h / 2, rot = o.rot || 0;
+  return roomBands(o).map((b) => rotRectAabb(b, cx, cy, rot));
+}
+// Doors and windows, expressed in this room's frame, so they can cut its walls.
+function openingsFor(o) {
+  const cx = o.x + o.w / 2, cy = o.y + o.h / 2, rot = o.rot || 0;
+  const list = [];
+  for (const t of state.objects) if (OPENINGS.has(t.type)) list.push(rotRectAabb(aabb(t), cx, cy, -rot));
+  return list;
+}
+// [a0,a1] minus the cut intervals, left to right.
+function subtractIntervals(a0, a1, cuts) {
+  let segs = [[a0, a1]];
+  for (const [c0, c1] of cuts) {
+    const next = [];
+    for (const [s0, s1] of segs) {
+      if (c1 <= s0 || c0 >= s1) { next.push([s0, s1]); continue; }
+      if (c0 > s0) next.push([s0, c0]);
+      if (c1 < s1) next.push([c1, s1]);
+    }
+    segs = next;
+  }
+  return segs;
+}
+// The pieces of a room's walls that survive its doors and windows.
+function roomWallPieces(o) {
+  const bands = roomBands(o);
+  if (!bands.length) return [];
+  const openings = openingsFor(o);
+  const out = [];
+  for (const band of bands) {
+    const horiz = band.axis === "x";
+    const cuts = [];
+    for (const op of openings) {
+      if (!rectsOverlap(band, op)) continue;
+      cuts.push(horiz ? [op.x, op.x + op.w] : [op.y, op.y + op.h]);
+    }
+    const a0 = horiz ? band.x : band.y;
+    const a1 = a0 + (horiz ? band.w : band.h);
+    for (const [s0, s1] of subtractIntervals(a0, a1, cuts)) {
+      if (s1 - s0 < 0.5) continue;
+      out.push(horiz ? { x: s0, y: band.y, w: s1 - s0, h: band.h } : { x: band.x, y: s0, w: band.w, h: s1 - s0 });
+    }
+  }
+  return out;
 }
 function rectsOverlap(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }
 // A room is a backdrop, a door/window sits inside a wall: neither blocks.
@@ -651,7 +736,12 @@ function clearanceBlocked(o) {
   const t1 = { x: band.x + 1, y: band.y + 1, w: band.w - 2, h: band.h - 2 };  // 1 cm slack
   if (t1.w <= 0 || t1.h <= 0) return false;
   for (const t of state.objects) {
-    if (t.id === o.id || !blocksClearance(t)) continue;
+    if (t.id === o.id) continue;
+    if (t.type === "room") {                 // only the walls block, not the floor
+      for (const band of roomBandsWorld(t)) if (rectsOverlap(t1, band)) return true;
+      continue;
+    }
+    if (!blocksClearance(t)) continue;
     if (rectsOverlap(t1, aabb(t))) return true;
   }
   return false;
@@ -703,6 +793,7 @@ function renderObjects() {
     const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
     if (o.rot) g.setAttribute("transform", `rotate(${o.rot} ${cx} ${cy})`);
     const isPiece = !!TYPES[o.type].piece;
+    const walled = o.type === "room" && (o.wall || 0) > 0;
     const cr = clearanceRect(o);
     if (cr) g.appendChild(el("rect", {
       x: cr.x, y: cr.y, width: cr.w, height: cr.h,
@@ -712,10 +803,13 @@ function renderObjects() {
     const rect = el("rect", {
       x: o.x, y: o.y, width: o.w, height: o.h,
       rx: isPiece ? 2 : 0, ry: isPiece ? 2 : 0,
-      class: `obj-rect obj-${o.type}`, fill: o.color, stroke: o.color,
+      class: `obj-rect obj-${o.type}${walled ? " room-floor" : ""}`, fill: o.color, stroke: o.color,
       "vector-effect": "non-scaling-stroke",
     });
     g.appendChild(rect);
+    for (const p of roomWallPieces(o)) {
+      g.appendChild(el("rect", { x: p.x, y: p.y, width: p.w, height: p.h, class: "room-wall", fill: DEFAULT_WALL_COLOR }));
+    }
     for (const node of decorate(o)) g.appendChild(node);
     if (o.label) {
       const label = el("text", { x: cx, y: cy, class: "obj-label", "font-size": labelFs, "text-anchor": "middle", "dominant-baseline": "central" });
@@ -725,7 +819,11 @@ function renderObjects() {
     // second line: size while selected, area for a room (always).
     const parts = [];
     if (isSelected(o.id)) parts.push(`${Math.round(o.w)}×${Math.round(o.h)}`);
-    if (o.type === "room") parts.push(`${((o.w * o.h) / 10000).toFixed(1)} m²`);
+    // a room's area is the floor inside its walls
+    if (o.type === "room") {
+      const t = o.wall || 0;
+      parts.push(`${((Math.max(0, o.w - t) * Math.max(0, o.h - t)) / 10000).toFixed(1)} m²`);
+    }
     if (parts.length) {
       const dim = el("text", {
         x: cx, y: cy + (o.label ? labelFs * 0.9 : 0), class: "obj-dim", "font-size": dimFs,
@@ -1051,6 +1149,11 @@ for (const key of ["x", "y", "w", "h"]) {
     commit(key, v);
   });
 }
+$("f-wall").addEventListener("input", (e) => {
+  const v = parseFloat(e.target.value);
+  if (Number.isNaN(v)) return;
+  commit("wall", Math.max(0, v));
+});
 $("f-rot").addEventListener("input", (e) => {
   const v = parseFloat(e.target.value);
   if (Number.isNaN(v)) return;
@@ -1074,13 +1177,17 @@ function syncPanel() {
   set($("f-rot"), Math.round(sel.rot || 0));
   set($("f-clear"), Math.round(sel.clear || 0));
   if (fFace !== active) fFace.value = sel.face || "S";
+  set($("f-wall"), Math.round(sel.wall || 0));
+  const isRoom = sel.type === "room";
+  $("f-wall-field").hidden = !isRoom;
+  $("f-clear-row").hidden = isRoom;
   $("f-flip-field").hidden = sel.type !== "door";
   for (const b of fColors.children) b.classList.toggle("active", b.title.toLowerCase() === String(sel.color).toLowerCase());
 }
 
 /* ---------- save / load ---------- */
 function save() {
-  const doc = { app: "moebel", version: 3, units: "cm", objects: state.objects };
+  const doc = { app: "moebel", version: 4, units: "cm", objects: state.objects };
   const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1104,6 +1211,7 @@ function sanitize(raw, fallbackId) {
     flip: [0, 1, 2, 3].includes(raw.flip) ? raw.flip : 0,
     clear: Math.max(0, Math.round(num(raw.clear, def.clear || 0))),
     face: Object.prototype.hasOwnProperty.call(FACES, raw.face) ? raw.face : "S",
+    wall: Math.max(0, Math.round(num(raw.wall, def.wall || 0))),
     rot: Number.isFinite(num(raw.rot, NaN)) ? ((Math.round(num(raw.rot, 0)) % 360) + 360) % 360 : 0,
   };
 }
@@ -1217,13 +1325,9 @@ window.addEventListener("resize", () => render());
 /* ---------- startup: last session if there is one, else the sample ---------- */
 function seed() {
   const place = (type, x, y, extra = {}) => addObject({ ...spawnDefaults(type), x, y, ...extra });
-  place("room", 12, 12, { w: 376, h: 276, label: "Studio" });   // first = painted behind
-  place("wall", 0, 0, { w: 400, h: 12, label: "" });
-  place("wall", 0, 288, { w: 400, h: 12, label: "" });
-  place("wall", 0, 0, { w: 12, h: 300, label: "" });
-  place("wall", 388, 0, { w: 12, h: 300, label: "" });
-  place("door", 150, 288, { w: 80, h: 12, label: "", flip: 0 });
-  place("window", 130, 0, { w: 120, h: 12, label: "" });
+  place("room", 0, 0, { w: 400, h: 300, label: "Studio" });   // first = painted behind
+  place("door", 150, 294, { w: 80, h: 12, label: "", flip: 0 });
+  place("window", 130, -6, { w: 120, h: 12, label: "" });
   place("desk", 40, 40, { w: 140, h: 60, label: "Desk" });
   place("furniture", 95, 120, { w: 45, h: 45, label: "Chair", color: "#16a34a" });
   place("bookshelf", 296, 30, { w: 92, h: 28, label: "Shelf" });

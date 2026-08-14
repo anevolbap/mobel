@@ -16,7 +16,15 @@ The whole app is one self-contained file with inline CSS and a single classic
 
 - **Add ▾** places a room, wall, door, window, tall window, bookshelf, fridge,
   desk, table, bed, sofa, wardrobe or generic furniture at the view centre.
-- A **room** is a backdrop rectangle that always prints its floor area in m².
+- A **room** carries its own walls, so one room replaces the four walls you would
+  otherwise draw. Set the thickness in the sidebar, or 0 for a bare floor. The
+  wall is centred on the rectangle, so two rooms placed edge to edge share one
+  wall instead of stacking two. The label prints the floor area inside the walls.
+- Doors and windows cut real gaps: drop one over a room wall and the wall opens
+  to exactly its width. Move it away and the wall closes again. The plain **wall**
+  type is still there for partitions and shapes a rectangle cannot make.
+- Drag a room's floor to pan, click its wall to select it. Furniture snaps to the
+  inner face of the wall, so a sofa lands against it, not inside it.
 - Drag empty space to pan; scroll to zoom toward the cursor; **Fit** frames everything.
 - Click to select; drag to move; drag the corner handle to resize; drag the round knob to rotate.
 - **Shift+click** adds to the selection, **Shift+drag** on empty space draws a
@@ -60,4 +68,9 @@ the SVG from it. Everything is an axis-aligned rectangle.
 
 Undo stores JSON snapshots of `state.objects`, one per finished gesture, capped
 at 50. Paint order is array order, so z-order is a move inside the array. Saved
-files are version 3; version 2 files (no clearance) still load.
+files are version 4; older files load, and a room from an older file picks up
+the default 15 cm walls.
+
+Room walls are four bands in the room's own frame, cut by interval subtraction
+wherever a door or window overlaps them, so an opening is a real gap and not a
+rectangle painted on top.
