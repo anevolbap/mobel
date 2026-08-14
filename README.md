@@ -36,6 +36,11 @@ The whole app is one self-contained file with inline CSS and a single classic
 - **Snap 5 cm** snaps to a 5 cm grid and magnet-aligns edges/centres to nearby
   objects, so walls connect flush. A thin line shows what it locked onto. Hold
   **Alt** while dragging to place freely.
+- **Measure** (or `M`) turns the pointer into a tape. Drag to read a distance in
+  centimetres and metres. Both ends jump to nearby object edges, so measuring a
+  clear span between two walls gives the exact number. Hold **Alt** to measure
+  free. `Esc` clears the tape. Measurements are not part of the layout and are
+  never saved.
 - Every change is undoable, and the layout is kept in `localStorage`, so a reload
   brings back the last session. **File ▾ → Reset to sample** goes back to the
   demo room. **File ▾ → Print** prints the plan alone, without the interface.

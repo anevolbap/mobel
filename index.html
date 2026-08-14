@@ -87,6 +87,7 @@
     /* --- workspace --- */
     #workspace { display: grid; grid-template-columns: 1fr 260px; min-height: 0; }
     #canvas { width: 100%; height: 100%; display: block; background: var(--paper); touch-action: none; cursor: default; }
+    #canvas.measuring { cursor: crosshair; }
 
     .grid-minor { stroke: var(--grid-minor); stroke-width: 1; }
     .grid-major { stroke: var(--grid-major); stroke-width: 1; }
@@ -110,6 +111,8 @@
     .selection { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
     .guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 4; pointer-events: none; }
     .marquee { fill: var(--accent); fill-opacity: 0.07; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+    .measure-line { stroke: var(--accent); stroke-width: 1.5; pointer-events: none; }
+    .measure-label { fill: var(--accent); font-family: var(--mono); font-weight: 600; stroke: var(--paper); paint-order: stroke; pointer-events: none; user-select: none; }
     .handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: nwse-resize; }
     .rotate-handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: grab; }
     .rotate-stem { stroke: var(--accent); stroke-width: 1; pointer-events: none; }
@@ -170,6 +173,8 @@
         <button id="btn-fit" class="btn">Fit</button>
       </div>
       <label class="toggle"><input type="checkbox" id="snap-check" checked /> Snap 5&nbsp;cm</label>
+      <span class="sep"></span>
+      <button id="btn-measure" class="btn">Measure</button>
       <span class="spacer"></span>
       <details class="menu" id="menu-file">
         <summary class="btn">File ▾</summary>
@@ -328,6 +333,7 @@ const ICONS = {
   front: '<path d="M12 2l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
   back: '<path d="M3 11l9 5 9-5"/><path d="M3 16l9 5 9-5"/>',
   sample: '<path d="M12 3v18M3 12h18"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
+  ruler: '<path d="M3 15L15 3l6 6L9 21z"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2"/>',
   // object types (echo the on-canvas symbols)
   wall: '<rect x="3" y="10" width="18" height="4" rx="1" fill="currentColor" stroke="none"/>',
   door: '<path d="M6 6v14"/><path d="M6 20a14 14 0 0 0 14-14"/>',
@@ -364,6 +370,8 @@ const state = {
   view: { panX: 0, panY: 0, zoom: 1 },   // screenPx = world * zoom + pan
   guides: { x: null, y: null },          // magnet feedback, live during a drag
   marquee: null,                         // rubber-band rect, live during a drag
+  measuring: false,                      // measure tool armed
+  measure: null,                         // the drawn tape, kept until cleared
 };
 
 function getById(id) { return state.objects.find((o) => o.id === id) || null; }
@@ -529,6 +537,17 @@ function magnetResize(o) {
   }
   if (br !== null) o.w = Math.max(MIN_SIZE, Math.round(br - o.x));
   if (bb !== null) o.h = Math.max(MIN_SIZE, Math.round(bb - o.y));
+}
+// Magnet for a bare point (the measure tool): pull onto nearby object edges.
+function magnetPoint(x, y) {
+  const thr = SNAP_DIST / state.view.zoom;
+  let bx = Infinity, by = Infinity, sx = x, sy = y;
+  for (const t of state.objects) {
+    const b = aabb(t);
+    for (const tx of [b.x, b.x + b.w]) { const d = Math.abs(tx - x); if (d <= thr && d < bx) { bx = d; sx = tx; } }
+    for (const ty of [b.y, b.y + b.h]) { const d = Math.abs(ty - y); if (d <= thr && d < by) { by = d; sy = ty; } }
+  }
+  return { x: sx, y: sy };
 }
 function rotatePoint(px, py, cx, cy, deg) {
   const r = (deg * Math.PI) / 180, dx = px - cx, dy = py - cy;
@@ -747,6 +766,24 @@ function renderOverlay() {
   }
   const m = state.marquee;
   if (m) overlayGroup.appendChild(el("rect", { x: m.x, y: m.y, width: m.w, height: m.h, class: "marquee", "vector-effect": "non-scaling-stroke" }));
+  const t = state.measure;
+  if (t) {
+    const g = el("g", {});
+    const line = (x1, y1, x2, y2) => el("line", { x1, y1, x2, y2, class: "measure-line", "vector-effect": "non-scaling-stroke" });
+    g.appendChild(line(t.x1, t.y1, t.x2, t.y2));
+    const ang = Math.atan2(t.y2 - t.y1, t.x2 - t.x1);           // end ticks, across the tape
+    const tick = 6 / zoom, nx = -Math.sin(ang) * tick, ny = Math.cos(ang) * tick;
+    for (const [px, py] of [[t.x1, t.y1], [t.x2, t.y2]]) g.appendChild(line(px - nx, py - ny, px + nx, py + ny));
+    const len = Math.hypot(t.x2 - t.x1, t.y2 - t.y1);
+    const label = el("text", {
+      x: (t.x1 + t.x2) / 2 - nx * 2.2, y: (t.y1 + t.y2) / 2 - ny * 2.2,
+      class: "measure-label", "font-size": LABEL_PX / zoom, "stroke-width": 3 / zoom,
+      "text-anchor": "middle", "dominant-baseline": "central",
+    });
+    label.textContent = len >= 100 ? `${Math.round(len)} cm · ${(len / 100).toFixed(2)} m` : `${Math.round(len)} cm`;
+    g.appendChild(label);
+    overlayGroup.appendChild(g);
+  }
 }
 function updateStatus() {
   elObjCount.textContent = String(state.objects.length);
@@ -799,6 +836,12 @@ function spawn(type) {
 
 /* ---------- pointer + keyboard interaction ---------- */
 let drag = null;
+// Tape ends land on a nearby object edge, else free. Alt measures raw.
+function measurePoint(world, e) {
+  if (!state.snap || e.altKey) return { x: Math.round(world.x), y: Math.round(world.y) };
+  const p = magnetPoint(world.x, world.y);
+  return { x: Math.round(p.x), y: Math.round(p.y) };
+}
 function typingInField() {
   const a = document.activeElement;
   return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable);
@@ -807,6 +850,14 @@ svg.addEventListener("pointerdown", (e) => {
   const world = screenToWorld(e.clientX, e.clientY);
   if (!world) return;
   drag = null;
+  if (state.measuring) {                 // the tape wins over selecting and panning
+    const p = measurePoint(world, e);
+    state.measure = { x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+    drag = { mode: "measure" };
+    onChange();
+    svg.setPointerCapture(e.pointerId);
+    return;
+  }
   const handle = e.target.closest("[data-handle]");
   const objNode = e.target.closest(".obj");
   if (handle && getSelected()) {
@@ -843,6 +894,13 @@ svg.addEventListener("pointermove", (e) => {
   if (drag.mode === "pan") {
     state.view.panX = drag.panX + (e.clientX - drag.startX);
     state.view.panY = drag.panY + (e.clientY - drag.startY);
+    onChange();
+    return;
+  }
+  if (drag.mode === "measure") {
+    if (!world) return;
+    const p = measurePoint(world, e);
+    state.measure.x2 = p.x; state.measure.y2 = p.y;
     onChange();
     return;
   }
@@ -901,7 +959,8 @@ function endDrag(e) {
   state.guides.x = state.guides.y = null;
   state.marquee = null;
   if (!was) return;
-  if (was.mode !== "pan") checkpoint();   // one undo step per finished gesture
+  // one undo step per finished gesture; pan, marquee and measure change no object
+  if (was.mode === "move" || was.mode === "resize" || was.mode === "rotate") checkpoint();
   onChange();
 }
 svg.addEventListener("pointerup", endDrag);
@@ -931,7 +990,11 @@ window.addEventListener("keydown", (e) => {
   const many = selectedObjects();
   if (mod && k === "d") { e.preventDefault(); if (many.length) { duplicateSelected(); checkpoint(); onChange(); } return; }
   if (e.key === "Delete" || e.key === "Backspace") { if (many.length) { e.preventDefault(); deleteSelected(); checkpoint(); onChange(); } return; }
-  if (e.key === "Escape") { select(null); onChange(); return; }
+  if (k === "m") { e.preventDefault(); setMeasuring(!state.measuring); return; }
+  if (e.key === "Escape") {
+    if (state.measure) state.measure = null; else select(null);
+    onChange(); return;
+  }
   // single-key actions on the selection (no modifier; typing is already excluded above)
   if (many.length && !mod) {
     if (k === "x") { e.preventDefault(); deleteSelected(); checkpoint(); onChange(); return; }
@@ -1109,6 +1172,18 @@ $("act-back").title = $("m-back").title = "Send to back";
 $("btn-undo").addEventListener("click", undo);
 $("btn-redo").addEventListener("click", redo);
 $("btn-print").addEventListener("click", () => { fitView(); window.print(); });
+
+const btnMeasure = $("btn-measure");
+btnMeasure.innerHTML = icon("ruler") + "<span>Measure</span>";
+btnMeasure.title = "Measure a distance (M)";
+function setMeasuring(on) {
+  state.measuring = on;
+  state.measure = null;
+  btnMeasure.classList.toggle("active", on);
+  svg.classList.toggle("measuring", on);
+  onChange();
+}
+btnMeasure.addEventListener("click", () => setMeasuring(!state.measuring));
 
 const snapCheck = $("snap-check");
 snapCheck.checked = state.snap;
