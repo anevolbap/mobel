@@ -19,6 +19,7 @@
       --ruler: #6f8794;
       --accent: #c2410c;
       --accent-ink: #fff;
+      --warn: #dc2626;
       --wall: #3a3a42;
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
       --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
@@ -42,6 +43,8 @@
     }
     .btn:hover { background: #f3eee5; }
     .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:disabled:hover { background: #fff; }
     .btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
     .btn-danger { color: var(--accent); }
     .btn-danger:hover { background: #f7e7e0; }
@@ -93,15 +96,20 @@
     .obj-rect { stroke-width: 1.5; fill-opacity: 0.22; }
     .obj-wall { fill-opacity: 1; }
 
+    .deco-clear { fill: none; stroke-width: 1; stroke-dasharray: 6 4; opacity: 0.5; pointer-events: none; }
+    .deco-clear.blocked { stroke: var(--warn); opacity: 0.95; stroke-dasharray: 3 3; }
     .deco-swing { fill: none; stroke-width: 1; opacity: 0.5; pointer-events: none; }
     .deco-leaf { fill: none; stroke-width: 2; pointer-events: none; }
     .deco-glass { stroke-width: 1.5; pointer-events: none; }
     .deco-shelf { stroke-width: 1; pointer-events: none; }
 
+    .obj-room { fill-opacity: 0.07; stroke-dasharray: 9 5; }
     .obj-label { fill: var(--ink); font-family: var(--sans); font-weight: 600; pointer-events: none; user-select: none; }
     .obj-dim { fill: var(--ink-soft); font-family: var(--mono); pointer-events: none; user-select: none; }
 
     .selection { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+    .guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 4; pointer-events: none; }
+    .marquee { fill: var(--accent); fill-opacity: 0.07; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
     .handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: nwse-resize; }
     .rotate-handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: grab; }
     .rotate-stem { stroke: var(--accent); stroke-width: 1; pointer-events: none; }
@@ -134,6 +142,11 @@
       #sidebar { border-left: none; border-top: 1px solid var(--border); max-height: 40vh; }
     }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+    @media print {
+      #toolbar, #sidebar, #statusbar { display: none; }
+      #workspace { grid-template-columns: 1fr; }
+      body, #canvas { background: #fff; }
+    }
   </style>
 </head>
 <body>
@@ -145,6 +158,11 @@
         <summary class="btn">＋ Add ▾</summary>
         <div class="menu-pop" id="add-menu-pop"></div>
       </details>
+      <span class="sep"></span>
+      <div class="group" role="group" aria-label="History">
+        <button id="btn-undo" class="btn" aria-label="Undo">↶</button>
+        <button id="btn-redo" class="btn" aria-label="Redo">↷</button>
+      </div>
       <span class="sep"></span>
       <div class="group" role="group" aria-label="Zoom">
         <button id="btn-zoom-out" class="btn" aria-label="Zoom out">−</button>
@@ -158,7 +176,9 @@
         <div class="menu-pop">
           <button id="btn-save" class="menu-item">Save layout…</button>
           <button id="btn-load" class="menu-item">Load layout…</button>
+          <button id="btn-print" class="menu-item">Print</button>
           <button id="btn-clear" class="menu-item">Clear all</button>
+          <button id="btn-sample" class="menu-item">Reset to sample</button>
         </div>
       </details>
       <input id="file-input" type="file" accept="application/json,.json" hidden />
@@ -183,10 +203,23 @@
             <li><b>Scroll</b> to zoom toward the cursor</li>
             <li><b>Drag</b> an object to move it</li>
             <li><b>Corner handle</b> to resize · <b>knob</b> to rotate</li>
+            <li><b>Snap</b> aligns edges to nearby objects (hold <b>Alt</b> to free-drag)</li>
+            <li><b>Shift+drag</b> empty space to select many · <b>Shift+click</b> to add</li>
             <li><b>Arrows</b> nudge (Shift = 1 cm) · <b>R</b> rotate 90°</li>
-            <li><b>Del</b> remove · <b>Ctrl/⌘+D</b> duplicate</li>
-            <li><b>Ctrl/⌘+S</b> save · <b>Esc</b> deselect</li>
+            <li><b>D</b> duplicate · <b>X</b> / <b>Del</b> delete</li>
+            <li><b>Ctrl/⌘+Z</b> undo · <b>Ctrl/⌘+S</b> save · <b>Esc</b> deselect</li>
           </ul>
+        </div>
+
+        <div id="panel-multi" hidden>
+          <h2><span id="multi-count">0</span> selected</h2>
+          <div class="actions">
+            <button id="m-rotate" class="btn">Rotate</button>
+            <button id="m-duplicate" class="btn">Duplicate</button>
+            <button id="m-front" class="btn">Front</button>
+            <button id="m-back" class="btn">Back</button>
+            <button id="m-delete" class="btn btn-danger">Delete</button>
+          </div>
         </div>
 
         <div id="panel-editor" hidden>
@@ -213,6 +246,10 @@
             <span>Rotation (°) · press R for 90°</span>
             <input id="f-rot" type="number" step="15" />
           </label>
+          <div class="grid2">
+            <label class="field"><span>Clearance (cm)</span><input id="f-clear" type="number" step="5" min="0" /></label>
+            <label class="field"><span>On side</span><select id="f-face"></select></label>
+          </div>
           <div class="field" id="f-color-field">
             <span>Color</span>
             <div id="f-colors" class="swatches"></div>
@@ -220,6 +257,8 @@
           <div class="actions">
             <button id="act-rotate" class="btn">Rotate 90°</button>
             <button id="act-duplicate" class="btn">Duplicate</button>
+            <button id="act-front" class="btn">Front</button>
+            <button id="act-back" class="btn">Back</button>
             <button id="act-delete" class="btn btn-danger">Delete</button>
           </div>
         </div>
@@ -245,14 +284,26 @@
 const DEFAULT_WALL_COLOR = "#3a3a42";
 const DEFAULT_FURNITURE_COLOR = "#1b6cf0";
 const MIN_SIZE = 1, SNAP_STEP = 5;
+const SNAP_DIST = 8; // px: magnet pull distance to other objects' edges
 
+// `clear` is the free space a piece needs beyond its own footprint (fridge
+// door swing, chair pull-out); `face` is the side it extends from, in the
+// object's own frame, so it turns with the object.
+const FACES = { N: "Top", E: "Right", S: "Bottom", W: "Left" };
 const TYPES = {
-  wall:       { name: "Wall",        w: 300, h: 12, color: DEFAULT_WALL_COLOR },
-  door:       { name: "Door",        w: 80,  h: 12, color: "#b07a3c" },
-  window:     { name: "Window",      w: 100, h: 12, color: "#3d8bd4" },
-  tallwindow: { name: "Tall window", w: 160, h: 12, color: "#1f9aad" },
-  bookshelf:  { name: "Bookshelf",   w: 80,  h: 28, color: "#8a6d3b" },
-  furniture:  { name: "Furniture",   w: 120, h: 60, color: DEFAULT_FURNITURE_COLOR },
+  room:       { name: "Room",        w: 400, h: 300, color: "#6f8794" },
+  wall:       { name: "Wall",        w: 300, h: 12,  color: DEFAULT_WALL_COLOR },
+  door:       { name: "Door",        w: 80,  h: 12,  color: "#b07a3c" },
+  window:     { name: "Window",      w: 100, h: 12,  color: "#3d8bd4" },
+  tallwindow: { name: "Tall window", w: 160, h: 12,  color: "#1f9aad" },
+  bookshelf:  { name: "Bookshelf",   w: 80,  h: 28,  color: "#8a6d3b",              piece: true },
+  furniture:  { name: "Furniture",   w: 120, h: 60,  color: DEFAULT_FURNITURE_COLOR, piece: true },
+  fridge:     { name: "Fridge",      w: 60,  h: 65,  color: "#0891b2", clear: 100,   piece: true },
+  desk:       { name: "Desk",        w: 140, h: 70,  color: "#1b6cf0", clear: 80,    piece: true },
+  table:      { name: "Table",       w: 120, h: 80,  color: "#ca8a04", clear: 75,    piece: true },
+  bed:        { name: "Bed",         w: 140, h: 200, color: "#7c3aed", clear: 60,    piece: true },
+  sofa:       { name: "Sofa",        w: 200, h: 90,  color: "#16a34a", clear: 60,    piece: true },
+  wardrobe:   { name: "Wardrobe",    w: 120, h: 60,  color: "#8a6d3b", clear: 90,    piece: true },
 };
 const TYPE_KEYS = Object.keys(TYPES);
 const PALETTE = ["#1b6cf0","#16a34a","#ea580c","#dc2626","#7c3aed","#0891b2","#ca8a04","#3a3a42"];
@@ -271,6 +322,12 @@ const ICONS = {
   rotate: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   flip: '<path d="M12 3v18"/><path d="M16 8l4 4-4 4"/><path d="M8 8l-4 4 4 4"/>',
+  undo: '<path d="M3 8h11a6 6 0 0 1 0 12H8"/><path d="M7 4L3 8l4 4"/>',
+  redo: '<path d="M21 8H10a6 6 0 0 0 0 12h6"/><path d="M17 4l4 4-4 4"/>',
+  print: '<path d="M7 8V3h10v5"/><path d="M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M7 15h10v6H7z"/>',
+  front: '<path d="M12 2l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  back: '<path d="M3 11l9 5 9-5"/><path d="M3 16l9 5 9-5"/>',
+  sample: '<path d="M12 3v18M3 12h18"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
   // object types (echo the on-canvas symbols)
   wall: '<rect x="3" y="10" width="18" height="4" rx="1" fill="currentColor" stroke="none"/>',
   door: '<path d="M6 6v14"/><path d="M6 20a14 14 0 0 0 14-14"/>',
@@ -278,9 +335,17 @@ const ICONS = {
   tallwindow: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 10h16M4 14h16"/>',
   bookshelf: '<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M8 5v14M13 5v14"/>',
   furniture: '<path d="M5 11a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2"/><path d="M5 11V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><path d="M6 19v1M18 19v1"/>',
+  fridge: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M6 9h12M9 5v2M9 12v2.5"/>',
+  desk: '<path d="M2 8h20M4 8v10M20 8v10"/><rect x="8" y="11" width="8" height="4" rx="1"/>',
+  table: '<rect x="3" y="7" width="18" height="3" rx="1"/><path d="M6 10v8M18 10v8"/>',
+  bed: '<path d="M3 18v-7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v7"/><path d="M3 15h18M3 18v2M21 18v2"/><rect x="5.5" y="11" width="5" height="3" rx="1"/>',
+  sofa: '<rect x="2" y="10" width="20" height="7" rx="2"/><path d="M5 10V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3M5 17v2M19 17v2"/>',
+  wardrobe: '<rect x="4" y="2" width="16" height="20" rx="1.5"/><path d="M12 2v20M10 12h-1M14 12h1"/>',
+  room: '<path d="M3 21V9l9-6 9 6v12z"/><path d="M9 21v-7h6v7"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`; }
-const TYPE_ICON = { wall: "wall", door: "door", window: "window", tallwindow: "tallwindow", bookshelf: "bookshelf", furniture: "furniture" };
+const TYPE_ICON = { room: "room", wall: "wall", door: "door", window: "window", tallwindow: "tallwindow", bookshelf: "bookshelf", furniture: "furniture",
+  fridge: "fridge", desk: "desk", table: "table", bed: "bed", sofa: "sofa", wardrobe: "wardrobe" };
 
 function isType(t) { return Object.prototype.hasOwnProperty.call(TYPES, t); }
 function spawnDefaults(type) {
@@ -290,20 +355,30 @@ function spawnDefaults(type) {
     w: t.w, h: t.h,
     label: type === "furniture" ? "Furniture" : t.name,
     color: t.color, flip: 0, rot: 0,
+    clear: t.clear || 0, face: "S",
   };
 }
 
 const state = {
-  objects: [], selectedId: null, nextId: 1, snap: true,
+  objects: [], sel: [], nextId: 1, snap: true,
   view: { panX: 0, panY: 0, zoom: 1 },   // screenPx = world * zoom + pan
+  guides: { x: null, y: null },          // magnet feedback, live during a drag
+  marquee: null,                         // rubber-band rect, live during a drag
 };
 
-function getSelected() { return state.objects.find((o) => o.id === state.selectedId) || null; }
 function getById(id) { return state.objects.find((o) => o.id === id) || null; }
-function select(id) { state.selectedId = id; }
+function isSelected(id) { return state.sel.includes(id); }
+function selectedObjects() { return state.objects.filter((o) => isSelected(o.id)); }
+// The properties panel and the resize/rotate handles need exactly one object.
+function getSelected() { return state.sel.length === 1 ? getById(state.sel[0]) : null; }
+function select(id) { state.sel = id == null ? [] : [id]; }
+function toggleSelect(id) {
+  const i = state.sel.indexOf(id);
+  if (i === -1) state.sel.push(id); else state.sel.splice(i, 1);
+}
 function addObject(partial) {
   const o = { id: state.nextId++, type: "furniture", label: "", x: 0, y: 0, w: 60, h: 60,
-    color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, ...partial };
+    color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, clear: 0, face: "S", ...partial };
   state.objects.push(o);
   return o;
 }
@@ -311,8 +386,10 @@ function deleteObject(id) {
   const i = state.objects.findIndex((o) => o.id === id);
   if (i === -1) return;
   state.objects.splice(i, 1);
-  if (state.selectedId === id) state.selectedId = null;
+  const s = state.sel.indexOf(id);
+  if (s !== -1) state.sel.splice(s, 1);
 }
+function deleteSelected() { for (const o of selectedObjects()) deleteObject(o.id); }
 function duplicateObject(id, off = 20) {
   const s = getById(id);
   if (!s) return null;
@@ -320,12 +397,78 @@ function duplicateObject(id, off = 20) {
   state.objects.push(c);
   return c;
 }
+function duplicateSelected() {
+  const copies = selectedObjects().map((o) => duplicateObject(o.id)).filter(Boolean);
+  if (copies.length) state.sel = copies.map((c) => c.id);
+}
+// Paint order is array order, so z-order is just a move within the array.
+function restack(toFront) {
+  const moving = selectedObjects();
+  if (!moving.length) return;
+  state.objects = state.objects.filter((o) => !isSelected(o.id));
+  if (toFront) state.objects.push(...moving); else state.objects.unshift(...moving);
+}
 function replaceObjects(objs) {
   state.objects = objs;
-  state.selectedId = null;
+  state.sel = [];
   state.nextId = objs.reduce((m, o) => Math.max(m, o.id), 0) + 1;
 }
-function clearAll() { state.objects = []; state.selectedId = null; state.nextId = 1; }
+function clearAll() { state.objects = []; state.sel = []; state.nextId = 1; }
+
+/* ---------- undo / redo ---------- */
+// One checkpoint per finished gesture: a whole drag is a single undo step.
+const HISTORY_LIMIT = 50;
+const history = { past: [], future: [] };
+let mark = "[]";                     // the last checkpointed layout
+const snapshot = () => JSON.stringify(state.objects);
+function checkpoint() {
+  const now = snapshot();
+  if (now === mark) return;
+  history.past.push(mark);
+  if (history.past.length > HISTORY_LIMIT) history.past.shift();
+  history.future.length = 0;
+  mark = now;
+  updateStatus();
+}
+function applySnapshot(json) {
+  replaceObjects(JSON.parse(json));
+  mark = json;
+  onChange();
+}
+function undo() {
+  if (!history.past.length) return;
+  history.future.push(snapshot());
+  applySnapshot(history.past.pop());
+}
+function redo() {
+  if (!history.future.length) return;
+  history.past.push(snapshot());
+  applySnapshot(history.future.pop());
+}
+
+/* ---------- autosave (survives a reload; degrades quietly if blocked) ---------- */
+const STORE_KEY = "moebel.autosave";
+let storeTimer = null;
+function autosave() {
+  clearTimeout(storeTimer);
+  storeTimer = setTimeout(() => {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ objects: state.objects, view: state.view })); }
+    catch (err) { /* private mode or a file:// restriction: keep working without it */ }
+  }, 400);
+}
+function restore() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORE_KEY); } catch (err) { return false; }
+  if (!raw) return false;
+  try {
+    const doc = JSON.parse(raw);
+    if (!doc || !Array.isArray(doc.objects) || !doc.objects.length) return false;
+    replaceObjects(doc.objects.map((o, i) => sanitize(o, i + 1)).filter(Boolean));
+    const v = doc.view;
+    if (v && Number.isFinite(v.zoom) && Number.isFinite(v.panX) && Number.isFinite(v.panY)) state.view = v;
+    return true;
+  } catch (err) { return false; }
+}
 
 /* ---------- DOM refs ---------- */
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -344,17 +487,64 @@ function screenToWorld(clientX, clientY) {
   return { x: w.x, y: w.y };
 }
 function snapValue(v) { return state.snap ? Math.round(v / SNAP_STEP) * SNAP_STEP : v; }
+
+// Axis-aligned bounding box. Exact for 0/90/180/270; footprint otherwise.
+function aabb(o) {
+  const rot = (((o.rot || 0) % 360) + 360) % 360;
+  if (rot === 90 || rot === 270) {
+    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+    return { x: cx - o.h / 2, y: cy - o.w / 2, w: o.h, h: o.w };
+  }
+  return { x: o.x, y: o.y, w: o.w, h: o.h };
+}
+// Magnet: pull a moving object's edges/centres onto nearby objects'. Returns
+// snapped top-left per axis (null when nothing is within range). Shift by the
+// found delta works directly because aabb() is translation-equivariant.
+function magnetEdges(o, x, y) {
+  const thr = SNAP_DIST / state.view.zoom;
+  const mo = aabb({ ...o, x, y });
+  const movX = [mo.x, mo.x + mo.w / 2, mo.x + mo.w];
+  const movY = [mo.y, mo.y + mo.h / 2, mo.y + mo.h];
+  let sx = null, sy = null, bx = Infinity, by = Infinity, gx = null, gy = null;
+  for (const t of state.objects) {
+    if (isSelected(t.id)) continue;
+    const tb = aabb(t);
+    const tX = [tb.x, tb.x + tb.w / 2, tb.x + tb.w];
+    const tY = [tb.y, tb.y + tb.h / 2, tb.y + tb.h];
+    for (const ex of movX) for (const tx of tX) { const d = tx - ex, ad = Math.abs(d); if (ad <= thr && ad < bx) { bx = ad; sx = x + d; gx = tx; } }
+    for (const ey of movY) for (const ty of tY) { const d = ty - ey, ad = Math.abs(d); if (ad <= thr && ad < by) { by = ad; sy = y + d; gy = ty; } }
+  }
+  return { x: sx, y: sy, gx, gy };   // gx/gy: the world line it locked onto
+}
+// Magnet for resizing: pull the dragged far edge onto a nearby edge.
+function magnetResize(o) {
+  const thr = SNAP_DIST / state.view.zoom;
+  const right = o.x + o.w, bottom = o.y + o.h;
+  let br = null, bb = null, bestR = Infinity, bestB = Infinity;
+  for (const t of state.objects) {
+    if (t.id === o.id) continue;
+    const tb = aabb(t);
+    for (const tx of [tb.x, tb.x + tb.w]) { const d = Math.abs(tx - right); if (d <= thr && d < bestR) { bestR = d; br = tx; } }
+    for (const ty of [tb.y, tb.y + tb.h]) { const d = Math.abs(ty - bottom); if (d <= thr && d < bestB) { bestB = d; bb = ty; } }
+  }
+  if (br !== null) o.w = Math.max(MIN_SIZE, Math.round(br - o.x));
+  if (bb !== null) o.h = Math.max(MIN_SIZE, Math.round(bb - o.y));
+}
 function rotatePoint(px, py, cx, cy, deg) {
   const r = (deg * Math.PI) / 180, dx = px - cx, dy = py - cy;
   return { x: cx + dx * Math.cos(r) - dy * Math.sin(r), y: cy + dx * Math.sin(r) + dy * Math.cos(r) };
 }
 function angleDeg(px, py, cx, cy) { return (Math.atan2(py - cy, px - cx) * 180) / Math.PI; }
+// Frames everything that is drawn: rotated footprints and clearance bands too.
 function contentBounds(objs) {
   if (!objs.length) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const o of objs) {
-    minX = Math.min(minX, o.x); minY = Math.min(minY, o.y);
-    maxX = Math.max(maxX, o.x + o.w); maxY = Math.max(maxY, o.y + o.h);
+    for (const b of [aabb(o), clearanceWorld(o)]) {
+      if (!b) continue;
+      minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
+    }
   }
   return { minX, minY, maxX, maxY };
 }
@@ -409,6 +599,44 @@ function drawGrid() {
     gridGroup.appendChild(t);
   }
 }
+// Clearance band, in the object's own frame (the group's rotate carries it).
+function clearanceRect(o) {
+  const c = o.clear || 0;
+  if (c <= 0) return null;
+  const f = o.face || "S";
+  if (f === "N") return { x: o.x, y: o.y - c, w: o.w, h: c };
+  if (f === "S") return { x: o.x, y: o.y + o.h, w: o.w, h: c };
+  if (f === "W") return { x: o.x - c, y: o.y, w: c, h: o.h };
+  return { x: o.x + o.w, y: o.y, w: c, h: o.h };
+}
+// Same band in world coords. Exact at 0/90/180/270; footprint at other angles.
+function clearanceWorld(o) {
+  const cr = clearanceRect(o);
+  if (!cr) return null;
+  const rot = o.rot || 0;
+  if (!rot) return cr;
+  const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+  const pts = [[cr.x, cr.y], [cr.x + cr.w, cr.y], [cr.x + cr.w, cr.y + cr.h], [cr.x, cr.y + cr.h]]
+    .map(([px, py]) => rotatePoint(px, py, cx, cy, rot));
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
+}
+function rectsOverlap(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }
+// A room is a backdrop, a door/window sits inside a wall: neither blocks.
+function blocksClearance(o) { return o.type === "wall" || !!TYPES[o.type].piece; }
+// True when something solid stands in the free space this piece needs.
+function clearanceBlocked(o) {
+  const band = clearanceWorld(o);
+  if (!band) return false;
+  const t1 = { x: band.x + 1, y: band.y + 1, w: band.w - 2, h: band.h - 2 };  // 1 cm slack
+  if (t1.w <= 0 || t1.h <= 0) return false;
+  for (const t of state.objects) {
+    if (t.id === o.id || !blocksClearance(t)) continue;
+    if (rectsOverlap(t1, aabb(t))) return true;
+  }
+  return false;
+}
 // type-specific symbols, in world coords; strokes follow the object colour.
 function decorate(o) {
   const nodes = [];
@@ -455,10 +683,16 @@ function renderObjects() {
     const g = el("g", { class: "obj", "data-id": o.id });
     const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
     if (o.rot) g.setAttribute("transform", `rotate(${o.rot} ${cx} ${cy})`);
-    const isFurniture = o.type === "furniture";
+    const isPiece = !!TYPES[o.type].piece;
+    const cr = clearanceRect(o);
+    if (cr) g.appendChild(el("rect", {
+      x: cr.x, y: cr.y, width: cr.w, height: cr.h,
+      class: clearanceBlocked(o) ? "deco-clear blocked" : "deco-clear",
+      stroke: o.color, "vector-effect": "non-scaling-stroke",
+    }));
     const rect = el("rect", {
       x: o.x, y: o.y, width: o.w, height: o.h,
-      rx: isFurniture ? 2 : 0, ry: isFurniture ? 2 : 0,
+      rx: isPiece ? 2 : 0, ry: isPiece ? 2 : 0,
       class: `obj-rect obj-${o.type}`, fill: o.color, stroke: o.color,
       "vector-effect": "non-scaling-stroke",
     });
@@ -469,12 +703,16 @@ function renderObjects() {
       label.textContent = o.label;
       g.appendChild(label);
     }
-    if (o.id === state.selectedId) {
+    // second line: size while selected, area for a room (always).
+    const parts = [];
+    if (isSelected(o.id)) parts.push(`${Math.round(o.w)}×${Math.round(o.h)}`);
+    if (o.type === "room") parts.push(`${((o.w * o.h) / 10000).toFixed(1)} m²`);
+    if (parts.length) {
       const dim = el("text", {
         x: cx, y: cy + (o.label ? labelFs * 0.9 : 0), class: "obj-dim", "font-size": dimFs,
         "text-anchor": "middle", "dominant-baseline": o.label ? "hanging" : "central",
       });
-      dim.textContent = `${Math.round(o.w)}×${Math.round(o.h)}`;
+      dim.textContent = parts.join(" · ");
       g.appendChild(dim);
     }
     objectsGroup.appendChild(g);
@@ -482,26 +720,42 @@ function renderObjects() {
 }
 function renderOverlay() {
   clearNode(overlayGroup);
-  const sel = getSelected();
-  if (!sel) return;
   const { zoom } = state.view;
-  const cx = sel.x + sel.w / 2, cy = sel.y + sel.h / 2;
-  const g = el("g", {});
-  if (sel.rot) g.setAttribute("transform", `rotate(${sel.rot} ${cx} ${cy})`);
-  g.appendChild(el("rect", { x: sel.x, y: sel.y, width: sel.w, height: sel.h, class: "selection", fill: "none", "vector-effect": "non-scaling-stroke" }));
-  const hs = HANDLE_PX / zoom;
-  g.appendChild(el("rect", { x: sel.x + sel.w - hs / 2, y: sel.y + sel.h - hs / 2, width: hs, height: hs, class: "handle", "data-handle": "se" }));
-  const stem = 22 / zoom, ry = sel.y - stem;
-  g.appendChild(el("line", { x1: cx, y1: sel.y, x2: cx, y2: ry, class: "rotate-stem", "vector-effect": "non-scaling-stroke" }));
-  g.appendChild(el("circle", { cx, cy: ry, r: hs * 0.6, class: "rotate-handle", "data-handle": "rot" }));
-  overlayGroup.appendChild(g);
+  for (const o of selectedObjects()) {
+    const g = el("g", {});
+    if (o.rot) g.setAttribute("transform", `rotate(${o.rot} ${o.x + o.w / 2} ${o.y + o.h / 2})`);
+    g.appendChild(el("rect", { x: o.x, y: o.y, width: o.w, height: o.h, class: "selection", fill: "none", "vector-effect": "non-scaling-stroke" }));
+    overlayGroup.appendChild(g);
+  }
+  const sel = getSelected();   // handles only make sense on a single object
+  if (sel) {
+    const cx = sel.x + sel.w / 2, cy = sel.y + sel.h / 2;
+    const g = el("g", {});
+    if (sel.rot) g.setAttribute("transform", `rotate(${sel.rot} ${cx} ${cy})`);
+    const hs = HANDLE_PX / zoom;
+    g.appendChild(el("rect", { x: sel.x + sel.w - hs / 2, y: sel.y + sel.h - hs / 2, width: hs, height: hs, class: "handle", "data-handle": "se" }));
+    const ry = sel.y - 22 / zoom;
+    g.appendChild(el("line", { x1: cx, y1: sel.y, x2: cx, y2: ry, class: "rotate-stem", "vector-effect": "non-scaling-stroke" }));
+    g.appendChild(el("circle", { cx, cy: ry, r: hs * 0.6, class: "rotate-handle", "data-handle": "rot" }));
+    overlayGroup.appendChild(g);
+  }
+  const gd = state.guides;
+  if (gd.x !== null || gd.y !== null) {
+    const v = visibleWorld();
+    if (gd.x !== null) overlayGroup.appendChild(el("line", { x1: gd.x, y1: v.top, x2: gd.x, y2: v.bottom, class: "guide", "vector-effect": "non-scaling-stroke" }));
+    if (gd.y !== null) overlayGroup.appendChild(el("line", { x1: v.left, y1: gd.y, x2: v.right, y2: gd.y, class: "guide", "vector-effect": "non-scaling-stroke" }));
+  }
+  const m = state.marquee;
+  if (m) overlayGroup.appendChild(el("rect", { x: m.x, y: m.y, width: m.w, height: m.h, class: "marquee", "vector-effect": "non-scaling-stroke" }));
 }
 function updateStatus() {
   elObjCount.textContent = String(state.objects.length);
   elZoom.textContent = `${Math.round(state.view.zoom * 100)}%`;
+  $("btn-undo").disabled = !history.past.length;
+  $("btn-redo").disabled = !history.future.length;
 }
 function render() { applyViewTransform(); drawGrid(); renderObjects(); renderOverlay(); updateStatus(); }
-function onChange() { render(); syncPanel(); }
+function onChange() { render(); syncPanel(); autosave(); }
 
 /* ---------- view helpers ---------- */
 const MIN_ZOOM = 0.05, MAX_ZOOM = 40;
@@ -537,7 +791,9 @@ function spawn(type) {
   const d = spawnDefaults(type);
   const sn = (v) => Math.round(v / SNAP_STEP) * SNAP_STEP;
   const o = addObject({ ...d, x: sn(c.x - d.w / 2), y: sn(c.y - d.h / 2) });
+  if (type === "room") state.objects.unshift(state.objects.pop());   // rooms are a backdrop
   select(o.id);
+  checkpoint();
   onChange();
 }
 
@@ -550,6 +806,7 @@ function typingInField() {
 svg.addEventListener("pointerdown", (e) => {
   const world = screenToWorld(e.clientX, e.clientY);
   if (!world) return;
+  drag = null;
   const handle = e.target.closest("[data-handle]");
   const objNode = e.target.closest(".obj");
   if (handle && getSelected()) {
@@ -563,9 +820,14 @@ svg.addEventListener("pointerdown", (e) => {
     }
   } else if (objNode) {
     const id = Number(objNode.getAttribute("data-id"));
-    const o = getById(id);
-    select(id);
-    drag = { mode: "move", id, dx: world.x - o.x, dy: world.y - o.y };
+    if (e.shiftKey) toggleSelect(id);
+    else if (!isSelected(id)) select(id);
+    // move the whole selection, keeping the relative offsets of its members
+    if (isSelected(id)) drag = { mode: "move", id, start: selectedObjects().map((o) => ({ id: o.id, dx: world.x - o.x, dy: world.y - o.y })) };
+    onChange();
+  } else if (e.shiftKey) {
+    state.marquee = { x: world.x, y: world.y, w: 0, h: 0 };
+    drag = { mode: "marquee", ox: world.x, oy: world.y, keep: state.sel.slice() };
     onChange();
   } else {
     select(null);
@@ -584,11 +846,33 @@ svg.addEventListener("pointermove", (e) => {
     onChange();
     return;
   }
+  if (drag.mode === "marquee") {
+    if (!world) return;
+    const x = Math.min(drag.ox, world.x), y = Math.min(drag.oy, world.y);
+    state.marquee = { x, y, w: Math.abs(world.x - drag.ox), h: Math.abs(world.y - drag.oy) };
+    const hit = state.objects.filter((t) => rectsOverlap(state.marquee, aabb(t))).map((t) => t.id);
+    state.sel = [...new Set([...drag.keep, ...hit])];
+    onChange();
+    return;
+  }
   const o = getById(drag.id);
   if (!o || !world) return;
   if (drag.mode === "move") {
-    o.x = snapValue(world.x - drag.dx);
-    o.y = snapValue(world.y - drag.dy);
+    const p = drag.start.find((s) => s.id === drag.id);
+    const rawX = world.x - p.dx, rawY = world.y - p.dy;
+    let nx, ny;
+    state.guides.x = state.guides.y = null;
+    if (!state.snap || e.altKey) {            // Alt = free placement
+      nx = Math.round(rawX); ny = Math.round(rawY);
+    } else {
+      const m = magnetEdges(o, rawX, rawY);   // snap to nearby objects first
+      nx = m.x !== null ? Math.round(m.x) : snapValue(rawX);
+      ny = m.y !== null ? Math.round(m.y) : snapValue(rawY);
+      if (m.x !== null) state.guides.x = m.gx;
+      if (m.y !== null) state.guides.y = m.gy;
+    }
+    const ddx = nx - o.x, ddy = ny - o.y;     // shift the rest by the same delta
+    for (const s of drag.start) { const t = getById(s.id); if (t) { t.x += ddx; t.y += ddy; } }
     onChange();
   } else if (drag.mode === "resize") {
     const a = drag.anchor, r = (-drag.rot * Math.PI) / 180;
@@ -600,6 +884,7 @@ svg.addEventListener("pointermove", (e) => {
     const cwy = (o.w / 2) * Math.sin(r2) + (o.h / 2) * Math.cos(r2);
     o.x = a.x + cwx - o.w / 2;
     o.y = a.y + cwy - o.h / 2;
+    if (state.snap && !e.altKey && drag.rot % 180 === 0) magnetResize(o);
     onChange();
   } else if (drag.mode === "rotate") {
     const now = angleDeg(world.x, world.y, drag.cx, drag.cy);
@@ -611,7 +896,13 @@ svg.addEventListener("pointermove", (e) => {
 });
 function endDrag(e) {
   if (drag && svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+  const was = drag;
   drag = null;
+  state.guides.x = state.guides.y = null;
+  state.marquee = null;
+  if (!was) return;
+  if (was.mode !== "pan") checkpoint();   // one undo step per finished gesture
+  onChange();
 }
 svg.addEventListener("pointerup", endDrag);
 svg.addEventListener("pointercancel", endDrag);
@@ -633,24 +924,33 @@ window.addEventListener("keydown", (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); save(); return; }
   if (typingInField()) return;
-  const sel = getSelected();
-  if (mod && e.key.toLowerCase() === "d") { e.preventDefault(); if (sel) { const c = duplicateObject(sel.id); if (c) select(c.id); onChange(); } return; }
-  if (e.key === "Delete" || e.key === "Backspace") { if (sel) { e.preventDefault(); deleteObject(sel.id); onChange(); } return; }
+  const k = e.key.toLowerCase();
+  if (mod && k === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+  if (mod && k === "y") { e.preventDefault(); redo(); return; }
+  if (mod && k === "a") { e.preventDefault(); state.sel = state.objects.map((o) => o.id); onChange(); return; }
+  const many = selectedObjects();
+  if (mod && k === "d") { e.preventDefault(); if (many.length) { duplicateSelected(); checkpoint(); onChange(); } return; }
+  if (e.key === "Delete" || e.key === "Backspace") { if (many.length) { e.preventDefault(); deleteSelected(); checkpoint(); onChange(); } return; }
   if (e.key === "Escape") { select(null); onChange(); return; }
-  if (sel && !mod && e.key.toLowerCase() === "r") { sel.rot = ((sel.rot || 0) + 90) % 360; onChange(); return; }
-  if (sel && e.key.startsWith("Arrow")) {
+  // single-key actions on the selection (no modifier; typing is already excluded above)
+  if (many.length && !mod) {
+    if (k === "x") { e.preventDefault(); deleteSelected(); checkpoint(); onChange(); return; }
+    if (k === "d" || k === "c") { e.preventDefault(); duplicateSelected(); checkpoint(); onChange(); return; }
+    if (k === "r") { e.preventDefault(); for (const o of many) o.rot = ((o.rot || 0) + 90) % 360; checkpoint(); onChange(); return; }
+  }
+  if (many.length && e.key.startsWith("Arrow")) {
     e.preventDefault();
     const step = e.shiftKey ? 1 : 5;
-    if (e.key === "ArrowLeft") sel.x -= step;
-    else if (e.key === "ArrowRight") sel.x += step;
-    else if (e.key === "ArrowUp") sel.y -= step;
-    else if (e.key === "ArrowDown") sel.y += step;
+    const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+    const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+    for (const o of many) { o.x += dx; o.y += dy; }
+    checkpoint();
     onChange();
   }
 });
 
 /* ---------- properties sidebar ---------- */
-const fType = $("f-type"), fColors = $("f-colors");
+const fType = $("f-type"), fColors = $("f-colors"), fFace = $("f-face");
 function commit(key, value) { const sel = getSelected(); if (!sel) return; sel[key] = value; onChange(); }
 
 for (const key of TYPE_KEYS) {
@@ -661,12 +961,25 @@ for (const key of TYPE_KEYS) {
 for (const c of PALETTE) {
   const b = document.createElement("button");
   b.className = "swatch"; b.style.background = c; b.title = c;
-  b.addEventListener("click", () => commit("color", c));
+  b.addEventListener("click", () => { commit("color", c); checkpoint(); });
   fColors.appendChild(b);
+}
+for (const key in FACES) {
+  const opt = document.createElement("option");
+  opt.value = key; opt.textContent = FACES[key];
+  fFace.appendChild(opt);
 }
 $("f-label").addEventListener("input", (e) => commit("label", e.target.value));
 fType.addEventListener("change", (e) => commit("type", e.target.value));
-$("f-flip").addEventListener("click", () => { const s = getSelected(); if (s) commit("flip", ((s.flip || 0) + 1) % 4); });
+fFace.addEventListener("change", (e) => commit("face", e.target.value));
+$("f-clear").addEventListener("input", (e) => {
+  const v = parseFloat(e.target.value);
+  if (Number.isNaN(v)) return;
+  commit("clear", Math.max(0, v));
+});
+$("f-flip").addEventListener("click", () => { const s = getSelected(); if (s) { commit("flip", ((s.flip || 0) + 1) % 4); checkpoint(); } });
+// Typing is one undo step per finished edit, not per keystroke.
+for (const f of $("panel-editor").querySelectorAll("input, select")) f.addEventListener("change", checkpoint);
 for (const key of ["x", "y", "w", "h"]) {
   $("f-" + key).addEventListener("input", (e) => {
     let v = parseFloat(e.target.value);
@@ -683,9 +996,11 @@ $("f-rot").addEventListener("input", (e) => {
 function syncPanel() {
   const sel = getSelected();
   const active = document.activeElement;
-  const panelEmpty = $("panel-empty"), panelEditor = $("panel-editor");
-  if (!sel) { panelEmpty.hidden = false; panelEditor.hidden = true; return; }
-  panelEmpty.hidden = true; panelEditor.hidden = false;
+  $("panel-empty").hidden = state.sel.length > 0;
+  $("panel-multi").hidden = state.sel.length < 2;
+  $("panel-editor").hidden = !sel;
+  if (state.sel.length > 1) $("multi-count").textContent = String(state.sel.length);
+  if (!sel) return;
   const set = (el2, v) => { if (el2 !== active) el2.value = v; };
   set($("f-label"), sel.label);
   if (fType !== active) fType.value = sel.type;
@@ -694,13 +1009,15 @@ function syncPanel() {
   set($("f-w"), Math.round(sel.w));
   set($("f-h"), Math.round(sel.h));
   set($("f-rot"), Math.round(sel.rot || 0));
+  set($("f-clear"), Math.round(sel.clear || 0));
+  if (fFace !== active) fFace.value = sel.face || "S";
   $("f-flip-field").hidden = sel.type !== "door";
   for (const b of fColors.children) b.classList.toggle("active", b.title.toLowerCase() === String(sel.color).toLowerCase());
 }
 
 /* ---------- save / load ---------- */
 function save() {
-  const doc = { app: "moebel", version: 2, units: "cm", objects: state.objects };
+  const doc = { app: "moebel", version: 3, units: "cm", objects: state.objects };
   const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -722,6 +1039,8 @@ function sanitize(raw, fallbackId) {
     h: Math.max(MIN_SIZE, Math.round(num(raw.h, def.h))),
     color: typeof raw.color === "string" && raw.color ? raw.color : def.color,
     flip: [0, 1, 2, 3].includes(raw.flip) ? raw.flip : 0,
+    clear: Math.max(0, Math.round(num(raw.clear, def.clear || 0))),
+    face: Object.prototype.hasOwnProperty.call(FACES, raw.face) ? raw.face : "S",
     rot: Number.isFinite(num(raw.rot, NaN)) ? ((Math.round(num(raw.rot, 0)) % 360) + 360) % 360 : 0,
   };
 }
@@ -734,6 +1053,7 @@ function loadFile(file) {
       const objs = [];
       doc.objects.forEach((raw, i) => { const o = sanitize(raw, i + 1); if (o) objs.push(o); });
       replaceObjects(objs);
+      checkpoint();
       fitView();
     } catch (err) { alert(`Could not load layout: ${err.message || err}`); }
   };
@@ -760,14 +1080,35 @@ $("btn-zoom-in").innerHTML = icon("plus"); $("btn-zoom-in").title = "Zoom in";
 $("btn-fit").innerHTML = icon("fit") + "<span>Fit</span>"; $("btn-fit").title = "Fit all to view";
 $("btn-save").innerHTML = icon("download") + "<span>Save layout</span>";
 $("btn-load").innerHTML = icon("upload") + "<span>Load layout</span>";
+$("btn-print").innerHTML = icon("print") + "<span>Print</span>";
 $("btn-clear").innerHTML = icon("trash") + "<span>Clear all</span>";
-$("act-rotate").innerHTML = icon("rotate") + "<span>Rotate</span>"; $("act-rotate").title = "Rotate 90°";
-$("act-duplicate").innerHTML = icon("copy") + "<span>Duplicate</span>";
-$("act-delete").innerHTML = icon("trash") + "<span>Delete</span>";
+$("btn-sample").innerHTML = icon("sample") + "<span>Reset to sample</span>";
+$("btn-undo").innerHTML = icon("undo"); $("btn-undo").title = "Undo (Ctrl/⌘+Z)";
+$("btn-redo").innerHTML = icon("redo"); $("btn-redo").title = "Redo (Ctrl/⌘+Shift+Z)";
 $("f-flip").innerHTML = icon("flip") + "<span>Flip swing</span>";
-$("act-rotate").addEventListener("click", () => { const s = getSelected(); if (s) { s.rot = ((s.rot || 0) + 90) % 360; onChange(); } });
-$("act-duplicate").addEventListener("click", () => { const s = getSelected(); if (s) { const c = duplicateObject(s.id); if (c) select(c.id); onChange(); } });
-$("act-delete").addEventListener("click", () => { const s = getSelected(); if (s) { deleteObject(s.id); onChange(); } });
+
+// Actions run on the whole selection; both panels share them.
+function actRotate() { const m = selectedObjects(); if (!m.length) return; for (const o of m) o.rot = ((o.rot || 0) + 90) % 360; checkpoint(); onChange(); }
+function actDuplicate() { if (!state.sel.length) return; duplicateSelected(); checkpoint(); onChange(); }
+function actDelete() { if (!state.sel.length) return; deleteSelected(); checkpoint(); onChange(); }
+function actStack(toFront) { if (!state.sel.length) return; restack(toFront); checkpoint(); onChange(); }
+for (const [id, ic, label, fn] of [
+  ["act-rotate", "rotate", "Rotate", actRotate], ["m-rotate", "rotate", "Rotate", actRotate],
+  ["act-duplicate", "copy", "Duplicate", actDuplicate], ["m-duplicate", "copy", "Duplicate", actDuplicate],
+  ["act-front", "front", "Front", () => actStack(true)], ["m-front", "front", "Front", () => actStack(true)],
+  ["act-back", "back", "Back", () => actStack(false)], ["m-back", "back", "Back", () => actStack(false)],
+  ["act-delete", "trash", "Delete", actDelete], ["m-delete", "trash", "Delete", actDelete],
+]) {
+  const b = $(id);
+  b.innerHTML = icon(ic) + `<span>${label}</span>`;
+  b.addEventListener("click", fn);
+}
+$("act-rotate").title = $("m-rotate").title = "Rotate 90°";
+$("act-front").title = $("m-front").title = "Bring to front";
+$("act-back").title = $("m-back").title = "Send to back";
+$("btn-undo").addEventListener("click", undo);
+$("btn-redo").addEventListener("click", redo);
+$("btn-print").addEventListener("click", () => { fitView(); window.print(); });
 
 const snapCheck = $("snap-check");
 snapCheck.checked = state.snap;
@@ -781,8 +1122,12 @@ const fileInput = $("file-input");
 $("btn-load").addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => { const f = fileInput.files[0]; if (f) loadFile(f); fileInput.value = ""; });
 $("btn-clear").addEventListener("click", () => {
-  if (state.objects.length && !confirm("Clear all objects? This cannot be undone.")) return;
-  clearAll(); onChange();
+  if (state.objects.length && !confirm("Clear all objects? Ctrl/⌘+Z undoes it.")) return;
+  clearAll(); checkpoint(); onChange();
+});
+$("btn-sample").addEventListener("click", () => {
+  if (state.objects.length && !confirm("Replace the layout with the sample room? Ctrl/⌘+Z undoes it.")) return;
+  clearAll(); seed(); checkpoint(); fitView();
 });
 
 // dropdown menus: close after picking an item and when clicking outside.
@@ -794,21 +1139,23 @@ document.addEventListener("click", (e) => {
 });
 window.addEventListener("resize", () => render());
 
-/* ---------- seed: a small room so the canvas isn't empty ---------- */
+/* ---------- startup: last session if there is one, else the sample ---------- */
 function seed() {
   const place = (type, x, y, extra = {}) => addObject({ ...spawnDefaults(type), x, y, ...extra });
+  place("room", 12, 12, { w: 376, h: 276, label: "Studio" });   // first = painted behind
   place("wall", 0, 0, { w: 400, h: 12, label: "" });
   place("wall", 0, 288, { w: 400, h: 12, label: "" });
   place("wall", 0, 0, { w: 12, h: 300, label: "" });
   place("wall", 388, 0, { w: 12, h: 300, label: "" });
   place("door", 150, 288, { w: 80, h: 12, label: "", flip: 0 });
   place("window", 130, 0, { w: 120, h: 12, label: "" });
-  place("furniture", 40, 40, { w: 140, h: 60, label: "Desk", color: "#1b6cf0" });
+  place("desk", 40, 40, { w: 140, h: 60, label: "Desk" });
   place("furniture", 95, 120, { w: 45, h: 45, label: "Chair", color: "#16a34a" });
   place("bookshelf", 296, 30, { w: 92, h: 28, label: "Shelf" });
 }
-seed();
-fitView();
+if (restore()) onChange(); else { seed(); fitView(); }
+mark = snapshot();   // the starting layout is the undo baseline
+updateStatus();
 </script>
 </body>
 </html>
