@@ -35,12 +35,14 @@ The whole app is one self-contained file with inline CSS and a single classic
 - Doors show a swing arc; **Flip swing** changes the hinge. Orientation follows width vs height.
 - The selected object shows its `W×H` in centimetres.
 - **Clearance** draws a dashed band for the free space a piece needs beyond its
-  own footprint: a fridge door swing, the chair pull-out behind a desk. Set the
-  depth in centimetres and the side it extends from. The side is in the object's
-  own frame, so it turns with the object. Fridge, desk, table, bed, sofa and
-  wardrobe come with a default; any object can have one.
-- The band turns red when something solid stands in it, so a blocked fridge door
-  or a chair with no room to pull out is visible at a glance.
+  own footprint. Each side has its own depth in centimetres, set in a small pad
+  where the four boxes sit where their side is, so a fridge reserves 100 cm at
+  the front, a double bed 60 cm on both flanks, and a dining table 75 cm all
+  round. The sides are in the object's own frame, so they turn with the object.
+  Fridge, desk, table, bed, sofa and wardrobe come with defaults; any object can
+  have any combination.
+- Each band turns red on its own when something solid stands in it, so a bed
+  pushed against a wall shows one flank blocked and the other still free.
 - **Snap 5 cm** snaps to a 5 cm grid and magnet-aligns edges/centres to nearby
   objects, so walls connect flush. A thin line shows what it locked onto. Hold
   **Alt** while dragging to place freely.
@@ -68,8 +70,9 @@ the SVG from it. Everything is an axis-aligned rectangle.
 
 Undo stores JSON snapshots of `state.objects`, one per finished gesture, capped
 at 50. Paint order is array order, so z-order is a move inside the array. Saved
-files are version 4; older files load, and a room from an older file picks up
-the default 15 cm walls.
+files are version 5; older files load. A room from an older file picks up the
+default 15 cm walls, and a version 4 `clear: 80, face: "S"` becomes
+`clear: {N: 0, E: 0, S: 80, W: 0}`.
 
 Room walls are four bands in the room's own frame, cut by interval subtraction
 wherever a door or window overlaps them, so an opening is a real gap and not a

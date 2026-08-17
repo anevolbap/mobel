@@ -133,6 +133,23 @@
     .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
     .grid2[hidden] { display: none; }
+    /* clearance pad: the four inputs sit where their side is */
+    .clearpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .clearpad .cp:nth-of-type(1) { grid-area: 1 / 2; }
+    .clearpad .cp:nth-of-type(2) { grid-area: 2 / 1; }
+    .clearpad .cp-mid { grid-area: 2 / 2; }
+    .clearpad .cp:nth-of-type(3) { grid-area: 2 / 3; }
+    .clearpad .cp:nth-of-type(4) { grid-area: 3 / 2; }
+    input.cp {
+      width: 100%; min-width: 0; padding: 5px 2px; text-align: center;
+      font: inherit; font-family: var(--mono); font-size: 12px; color: var(--ink);
+      border: 1px solid var(--border); border-radius: 5px; background: #fff;
+      appearance: textfield; -moz-appearance: textfield;
+    }
+    input.cp::-webkit-outer-spin-button, input.cp::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input.cp:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+    .cp-mid { border: 1px dashed var(--border); border-radius: 5px; }
+
     .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
     .swatch { width: 24px; height: 24px; border-radius: 5px; border: 2px solid transparent; cursor: pointer; padding: 0; }
     .swatch.active { border-color: var(--ink); box-shadow: 0 0 0 2px #fff inset; }
@@ -254,9 +271,15 @@
             <span>Rotation (°) · press R for 90°</span>
             <input id="f-rot" type="number" step="15" />
           </label>
-          <div class="grid2" id="f-clear-row">
-            <label class="field"><span>Clearance (cm)</span><input id="f-clear" type="number" step="5" min="0" /></label>
-            <label class="field"><span>On side</span><select id="f-face"></select></label>
+          <div class="field" id="f-clear-row">
+            <span>Clearance per side (cm)</span>
+            <div class="clearpad">
+              <input id="f-clear-N" class="cp" type="number" step="5" min="0" title="Top" aria-label="Clearance top" />
+              <input id="f-clear-W" class="cp" type="number" step="5" min="0" title="Left" aria-label="Clearance left" />
+              <span class="cp-mid" aria-hidden="true"></span>
+              <input id="f-clear-E" class="cp" type="number" step="5" min="0" title="Right" aria-label="Clearance right" />
+              <input id="f-clear-S" class="cp" type="number" step="5" min="0" title="Bottom" aria-label="Clearance bottom" />
+            </div>
           </div>
           <label class="field" id="f-wall-field" hidden>
             <span>Wall thickness (cm) · 0 for none</span>
@@ -298,10 +321,12 @@ const DEFAULT_FURNITURE_COLOR = "#1b6cf0";
 const MIN_SIZE = 1, SNAP_STEP = 5;
 const SNAP_DIST = 8; // px: magnet pull distance to other objects' edges
 
-// `clear` is the free space a piece needs beyond its own footprint (fridge
-// door swing, chair pull-out); `face` is the side it extends from, in the
-// object's own frame, so it turns with the object.
-const FACES = { N: "Top", E: "Right", S: "Bottom", W: "Left" };
+// `clear` is the free space a piece needs beyond its own footprint, in cm per
+// side: a fridge door swings at the front, a double bed needs both flanks. The
+// sides are in the object's own frame, so they turn with the object.
+const SIDES = { N: "Top", E: "Right", S: "Bottom", W: "Left" };
+const SIDE_KEYS = Object.keys(SIDES);
+const NO_CLEAR = { N: 0, E: 0, S: 0, W: 0 };
 const TYPES = {
   room:       { name: "Room",        w: 400, h: 300, color: "#6f8794", wall: 15 },
   wall:       { name: "Wall",        w: 300, h: 12,  color: DEFAULT_WALL_COLOR },
@@ -310,12 +335,12 @@ const TYPES = {
   tallwindow: { name: "Tall window", w: 160, h: 12,  color: "#1f9aad" },
   bookshelf:  { name: "Bookshelf",   w: 80,  h: 28,  color: "#8a6d3b",              piece: true },
   furniture:  { name: "Furniture",   w: 120, h: 60,  color: DEFAULT_FURNITURE_COLOR, piece: true },
-  fridge:     { name: "Fridge",      w: 60,  h: 65,  color: "#0891b2", clear: 100,   piece: true },
-  desk:       { name: "Desk",        w: 140, h: 70,  color: "#1b6cf0", clear: 80,    piece: true },
-  table:      { name: "Table",       w: 120, h: 80,  color: "#ca8a04", clear: 75,    piece: true },
-  bed:        { name: "Bed",         w: 140, h: 200, color: "#7c3aed", clear: 60,    piece: true },
-  sofa:       { name: "Sofa",        w: 200, h: 90,  color: "#16a34a", clear: 60,    piece: true },
-  wardrobe:   { name: "Wardrobe",    w: 120, h: 60,  color: "#8a6d3b", clear: 90,    piece: true },
+  fridge:     { name: "Fridge",      w: 60,  h: 65,  color: "#0891b2", piece: true, clear: { S: 100 } },
+  desk:       { name: "Desk",        w: 140, h: 70,  color: "#1b6cf0", piece: true, clear: { S: 80 } },
+  table:      { name: "Table",       w: 120, h: 80,  color: "#ca8a04", piece: true, clear: { N: 75, E: 75, S: 75, W: 75 } },
+  bed:        { name: "Bed",         w: 140, h: 200, color: "#7c3aed", piece: true, clear: { E: 60, W: 60 } },
+  sofa:       { name: "Sofa",        w: 200, h: 90,  color: "#16a34a", piece: true, clear: { S: 60 } },
+  wardrobe:   { name: "Wardrobe",    w: 120, h: 60,  color: "#8a6d3b", piece: true, clear: { S: 90 } },
 };
 const TYPE_KEYS = Object.keys(TYPES);
 const PALETTE = ["#1b6cf0","#16a34a","#ea580c","#dc2626","#7c3aed","#0891b2","#ca8a04","#3a3a42"];
@@ -368,7 +393,8 @@ function spawnDefaults(type) {
     w: t.w, h: t.h,
     label: type === "furniture" ? "Furniture" : t.name,
     color: t.color, flip: 0, rot: 0,
-    clear: t.clear || 0, face: "S", wall: t.wall || 0,
+    clear: { ...NO_CLEAR, ...(t.clear || null) },   // copied, never shared
+    wall: t.wall || 0,
   };
 }
 
@@ -393,7 +419,7 @@ function toggleSelect(id) {
 }
 function addObject(partial) {
   const o = { id: state.nextId++, type: "furniture", label: "", x: 0, y: 0, w: 60, h: 60,
-    color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, clear: 0, face: "S", wall: 0, ...partial };
+    color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, clear: { ...NO_CLEAR }, wall: 0, ...partial };
   state.objects.push(o);
   return o;
 }
@@ -408,7 +434,7 @@ function deleteSelected() { for (const o of selectedObjects()) deleteObject(o.id
 function duplicateObject(id, off = 20) {
   const s = getById(id);
   if (!s) return null;
-  const c = { ...s, id: state.nextId++, x: s.x + off, y: s.y + off };
+  const c = { ...s, id: state.nextId++, x: s.x + off, y: s.y + off, clear: { ...s.clear } };
   state.objects.push(c);
   return c;
 }
@@ -578,8 +604,7 @@ function contentBounds(objs) {
   if (!objs.length) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const o of objs) {
-    for (const b of [aabb(o), clearanceWorld(o)]) {
-      if (!b) continue;
+    for (const b of [aabb(o), ...clearanceWorld(o)]) {
       minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
       maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
     }
@@ -637,15 +662,20 @@ function drawGrid() {
     gridGroup.appendChild(t);
   }
 }
-// Clearance band, in the object's own frame (the group's rotate carries it).
-function clearanceRect(o) {
-  const c = o.clear || 0;
-  if (c <= 0) return null;
-  const f = o.face || "S";
-  if (f === "N") return { x: o.x, y: o.y - c, w: o.w, h: c };
-  if (f === "S") return { x: o.x, y: o.y + o.h, w: o.w, h: c };
-  if (f === "W") return { x: o.x - c, y: o.y, w: c, h: o.h };
-  return { x: o.x + o.w, y: o.y, w: c, h: o.h };
+// Clearance bands, in the object's own frame (the group's rotate carries them).
+// One per side with a depth; corners are left open.
+function clearDepth(o, side) { return (o.clear && o.clear[side]) || 0; }
+function clearanceRects(o) {
+  const out = [];
+  for (const side of SIDE_KEYS) {
+    const c = clearDepth(o, side);
+    if (c <= 0) continue;
+    if (side === "N") out.push({ side, x: o.x, y: o.y - c, w: o.w, h: c });
+    else if (side === "S") out.push({ side, x: o.x, y: o.y + o.h, w: o.w, h: c });
+    else if (side === "W") out.push({ side, x: o.x - c, y: o.y, w: c, h: o.h });
+    else out.push({ side, x: o.x + o.w, y: o.y, w: c, h: o.h });
+  }
+  return out;
 }
 // Turn a rect from an object's own frame into a world-space box. Exact at
 // 0/90/180/270; footprint at other angles.
@@ -658,9 +688,8 @@ function rotRectAabb(r, cx, cy, deg) {
   return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
 }
 function clearanceWorld(o) {
-  const cr = clearanceRect(o);
-  if (!cr) return null;
-  return rotRectAabb(cr, o.x + o.w / 2, o.y + o.h / 2, o.rot || 0);
+  const cx = o.x + o.w / 2, cy = o.y + o.h / 2, rot = o.rot || 0;
+  return clearanceRects(o).map((r) => ({ side: r.side, ...rotRectAabb(r, cx, cy, rot) }));
 }
 
 /* ---------- room walls ---------- */
@@ -729,10 +758,9 @@ function roomWallPieces(o) {
 function rectsOverlap(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }
 // A room is a backdrop, a door/window sits inside a wall: neither blocks.
 function blocksClearance(o) { return o.type === "wall" || !!TYPES[o.type].piece; }
-// True when something solid stands in the free space this piece needs.
-function clearanceBlocked(o) {
-  const band = clearanceWorld(o);
-  if (!band) return false;
+// True when something solid stands in one band of free space. Checked per side,
+// so a bed can be clear on one flank and blocked on the other.
+function bandBlocked(o, band) {
   const t1 = { x: band.x + 1, y: band.y + 1, w: band.w - 2, h: band.h - 2 };  // 1 cm slack
   if (t1.w <= 0 || t1.h <= 0) return false;
   for (const t of state.objects) {
@@ -794,12 +822,14 @@ function renderObjects() {
     if (o.rot) g.setAttribute("transform", `rotate(${o.rot} ${cx} ${cy})`);
     const isPiece = !!TYPES[o.type].piece;
     const walled = o.type === "room" && (o.wall || 0) > 0;
-    const cr = clearanceRect(o);
-    if (cr) g.appendChild(el("rect", {
-      x: cr.x, y: cr.y, width: cr.w, height: cr.h,
-      class: clearanceBlocked(o) ? "deco-clear blocked" : "deco-clear",
-      stroke: o.color, "vector-effect": "non-scaling-stroke",
-    }));
+    for (const cr of clearanceRects(o)) {
+      const blocked = bandBlocked(o, rotRectAabb(cr, cx, cy, o.rot || 0));
+      g.appendChild(el("rect", {
+        x: cr.x, y: cr.y, width: cr.w, height: cr.h,
+        class: blocked ? "deco-clear blocked" : "deco-clear",
+        stroke: o.color, "vector-effect": "non-scaling-stroke",
+      }));
+    }
     const rect = el("rect", {
       x: o.x, y: o.y, width: o.w, height: o.h,
       rx: isPiece ? 2 : 0, ry: isPiece ? 2 : 0,
@@ -811,8 +841,13 @@ function renderObjects() {
       g.appendChild(el("rect", { x: p.x, y: p.y, width: p.w, height: p.h, class: "room-wall", fill: DEFAULT_WALL_COLOR }));
     }
     for (const node of decorate(o)) g.appendChild(node);
+    // a room labels its top-left corner, so furniture in the middle stays legible
+    const isRoom = o.type === "room";
+    const pad = labelFs * 0.6, inset = (o.wall || 0) / 2;
+    const tx = isRoom ? o.x + inset + pad : cx, ty = isRoom ? o.y + inset + pad : cy;
+    const align = isRoom ? "start" : "middle";
     if (o.label) {
-      const label = el("text", { x: cx, y: cy, class: "obj-label", "font-size": labelFs, "text-anchor": "middle", "dominant-baseline": "central" });
+      const label = el("text", { x: tx, y: ty, class: "obj-label", "font-size": labelFs, "text-anchor": align, "dominant-baseline": isRoom ? "hanging" : "central" });
       label.textContent = o.label;
       g.appendChild(label);
     }
@@ -820,14 +855,14 @@ function renderObjects() {
     const parts = [];
     if (isSelected(o.id)) parts.push(`${Math.round(o.w)}×${Math.round(o.h)}`);
     // a room's area is the floor inside its walls
-    if (o.type === "room") {
+    if (isRoom) {
       const t = o.wall || 0;
       parts.push(`${((Math.max(0, o.w - t) * Math.max(0, o.h - t)) / 10000).toFixed(1)} m²`);
     }
     if (parts.length) {
       const dim = el("text", {
-        x: cx, y: cy + (o.label ? labelFs * 0.9 : 0), class: "obj-dim", "font-size": dimFs,
-        "text-anchor": "middle", "dominant-baseline": o.label ? "hanging" : "central",
+        x: tx, y: ty + (o.label ? labelFs * (isRoom ? 1.25 : 0.9) : 0), class: "obj-dim", "font-size": dimFs,
+        "text-anchor": align, "dominant-baseline": o.label || isRoom ? "hanging" : "central",
       });
       dim.textContent = parts.join(" · ");
       g.appendChild(dim);
@@ -1111,7 +1146,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 /* ---------- properties sidebar ---------- */
-const fType = $("f-type"), fColors = $("f-colors"), fFace = $("f-face");
+const fType = $("f-type"), fColors = $("f-colors");
 function commit(key, value) { const sel = getSelected(); if (!sel) return; sel[key] = value; onChange(); }
 
 for (const key of TYPE_KEYS) {
@@ -1125,19 +1160,15 @@ for (const c of PALETTE) {
   b.addEventListener("click", () => { commit("color", c); checkpoint(); });
   fColors.appendChild(b);
 }
-for (const key in FACES) {
-  const opt = document.createElement("option");
-  opt.value = key; opt.textContent = FACES[key];
-  fFace.appendChild(opt);
-}
 $("f-label").addEventListener("input", (e) => commit("label", e.target.value));
 fType.addEventListener("change", (e) => commit("type", e.target.value));
-fFace.addEventListener("change", (e) => commit("face", e.target.value));
-$("f-clear").addEventListener("input", (e) => {
-  const v = parseFloat(e.target.value);
-  if (Number.isNaN(v)) return;
-  commit("clear", Math.max(0, v));
-});
+for (const s of SIDE_KEYS) {
+  $("f-clear-" + s).addEventListener("input", (e) => {
+    const sel = getSelected(), v = parseFloat(e.target.value);
+    if (!sel || Number.isNaN(v)) return;
+    commit("clear", { ...sel.clear, [s]: Math.max(0, v) });
+  });
+}
 $("f-flip").addEventListener("click", () => { const s = getSelected(); if (s) { commit("flip", ((s.flip || 0) + 1) % 4); checkpoint(); } });
 // Typing is one undo step per finished edit, not per keystroke.
 for (const f of $("panel-editor").querySelectorAll("input, select")) f.addEventListener("change", checkpoint);
@@ -1175,8 +1206,7 @@ function syncPanel() {
   set($("f-w"), Math.round(sel.w));
   set($("f-h"), Math.round(sel.h));
   set($("f-rot"), Math.round(sel.rot || 0));
-  set($("f-clear"), Math.round(sel.clear || 0));
-  if (fFace !== active) fFace.value = sel.face || "S";
+  for (const s of SIDE_KEYS) set($("f-clear-" + s), Math.round(clearDepth(sel, s)));
   set($("f-wall"), Math.round(sel.wall || 0));
   const isRoom = sel.type === "room";
   $("f-wall-field").hidden = !isRoom;
@@ -1187,7 +1217,7 @@ function syncPanel() {
 
 /* ---------- save / load ---------- */
 function save() {
-  const doc = { app: "moebel", version: 4, units: "cm", objects: state.objects };
+  const doc = { app: "moebel", version: 5, units: "cm", objects: state.objects };
   const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1196,6 +1226,21 @@ function save() {
   URL.revokeObjectURL(url);
 }
 function num(v, fallback) { const n = typeof v === "string" ? parseFloat(v) : v; return Number.isFinite(n) ? n : fallback; }
+// Up to version 4 clearance was one depth on one side: {clear: 80, face: "S"}.
+function sanitizeClear(raw, def) {
+  const out = { ...NO_CLEAR };
+  if (raw.clear && typeof raw.clear === "object") {
+    for (const s of SIDE_KEYS) out[s] = Math.max(0, Math.round(num(raw.clear[s], 0)));
+    return out;
+  }
+  const legacy = num(raw.clear, NaN);
+  if (Number.isFinite(legacy)) {
+    const side = Object.prototype.hasOwnProperty.call(SIDES, raw.face) ? raw.face : "S";
+    out[side] = Math.max(0, Math.round(legacy));
+    return out;
+  }
+  return { ...out, ...(def.clear || null) };   // no clearance recorded: type default
+}
 function sanitize(raw, fallbackId) {
   if (!raw || typeof raw !== "object") return null;
   const type = isType(raw.type) ? raw.type : "furniture";
@@ -1209,8 +1254,7 @@ function sanitize(raw, fallbackId) {
     h: Math.max(MIN_SIZE, Math.round(num(raw.h, def.h))),
     color: typeof raw.color === "string" && raw.color ? raw.color : def.color,
     flip: [0, 1, 2, 3].includes(raw.flip) ? raw.flip : 0,
-    clear: Math.max(0, Math.round(num(raw.clear, def.clear || 0))),
-    face: Object.prototype.hasOwnProperty.call(FACES, raw.face) ? raw.face : "S",
+    clear: sanitizeClear(raw, def),
     wall: Math.max(0, Math.round(num(raw.wall, def.wall || 0))),
     rot: Number.isFinite(num(raw.rot, NaN)) ? ((Math.round(num(raw.rot, 0)) % 360) + 360) % 360 : 0,
   };
