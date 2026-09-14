@@ -1132,7 +1132,7 @@ for (const s of SIDE_KEYS) {
   $("f-clear-" + s).addEventListener("input", (e) => {
     const sel = getSelected(), v = parseFloat(e.target.value);
     if (!sel || Number.isNaN(v)) return;
-    commit("clear", { ...sel.clear, [s]: Math.max(0, v) });
+    commit("clear", { ...sel.clear, [s]: clampRound(v, 0, MAX_SIZE) });
   });
 }
 $("f-flip").addEventListener("click", () => { const s = getSelected(); if (s) { commit("flip", ((s.flip || 0) + 1) % 4); checkpoint(); } });
@@ -1143,15 +1143,17 @@ for (const key of ["x", "y", "w", "h", "z", "height"]) {
   $("f-" + key).addEventListener("input", (e) => {
     let v = parseFloat(e.target.value);
     if (Number.isNaN(v)) return;
-    if (key === "w" || key === "h" || key === "height") v = Math.max(MIN_SIZE, v);
-    if (key === "z") v = Math.max(0, v);
+    // the same limits as a loaded file
+    if (key === "x" || key === "y") v = clampRound(v, -MAX_POS, MAX_POS);
+    if (key === "w" || key === "h" || key === "height") v = clampRound(v, MIN_SIZE, MAX_SIZE);
+    if (key === "z") v = clampRound(v, 0, MAX_SIZE);
     commit(key, v);
   });
 }
 $("f-wall").addEventListener("input", (e) => {
   const v = parseFloat(e.target.value);
   if (Number.isNaN(v)) return;
-  commit("wall", Math.max(0, v));
+  commit("wall", clampRound(v, 0, MAX_SIZE));
 });
 $("f-rot").addEventListener("input", (e) => {
   const v = parseFloat(e.target.value);

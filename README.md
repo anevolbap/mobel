@@ -157,7 +157,8 @@ On load, a missing or broken field falls back to a safe value: 0 for the
 position, the type's default for size, height, colour, clearance and wall. A
 number that is not finite counts as broken. Other numbers are kept in range:
 `w`, `h`, `z`, `height`, `wall` and each `clear` side go up to 10000 cm (100 m),
-and `x`, `y` stay between -100000 and 100000 cm (1 km).
+and `x`, `y` stay between -100000 and 100000 cm (1 km). The sidebar holds
+typed numbers to the same ranges, rounded to whole centimetres.
 
 Every object needs its own `id`. If two objects share an id, the first keeps
 it and the other gets a new one above the highest id in the file. An object
