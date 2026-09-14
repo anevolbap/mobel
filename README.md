@@ -194,3 +194,7 @@ Known limits of Rearrange:
 - A piece belongs to the room that holds its centre.
 - Search time grows with floor area: about 1 s for a 3 × 3 m room and 5 s for
   6 × 4.5 m (measured in Node).
+
+## License
+
+GPL-3.0-or-later, see `LICENSE`.

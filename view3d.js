@@ -1,8 +1,11 @@
 "use strict";
 /* ============================================================
    Möbel 3D: the plan raised into boxes, seen with an orbit camera.
-   A classic script loaded after the one in index.html, so it uses its globals
-   (state, TYPES, aabb, roomBands, ...) and still runs from file://.
+   A classic script loaded after core.js and the inline script in index.html,
+   so it uses their globals and still runs from file://.
+   From core.js: aabb, rotatePoint, rotRectAabb, contentBounds, roomBands,
+   subtractIntervals, rectsOverlap, OPENINGS, DEFAULT_WALL_COLOR.
+   From index.html: state, $, icon, onChange, typingInField.
    Plan x is 3D x, plan y is 3D z, and heights go up along 3D y.
    ============================================================ */
 
