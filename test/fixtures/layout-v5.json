@@ -1,0 +1,10 @@
+{
+  "app": "moebel",
+  "version": 5,
+  "units": "cm",
+  "objects": [
+    { "id": 1, "type": "room", "label": "Kitchen", "x": 0, "y": 0, "w": 300, "h": 250, "color": "#6f8794", "flip": 0, "clear": { "N": 0, "E": 0, "S": 0, "W": 0 }, "wall": 0, "lock": false, "rot": 0 },
+    { "id": 2, "type": "window", "label": "Window", "x": 100, "y": -6, "w": 100, "h": 12, "color": "#3d8bd4", "flip": 0, "clear": { "N": 0, "E": 0, "S": 0, "W": 0 }, "wall": 0, "lock": false, "rot": 0 },
+    { "id": 3, "type": "table", "label": "Table", "x": 90, "y": 80, "w": 120, "h": 80, "color": "#ca8a04", "flip": 0, "clear": { "N": 75, "E": 75, "S": 0, "W": 75 }, "wall": 0, "lock": true, "rot": 0 }
+  ]
+}

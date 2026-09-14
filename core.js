@@ -6,6 +6,7 @@
 const DEFAULT_WALL_COLOR = "#3a3a42";
 const DEFAULT_FURNITURE_COLOR = "#1b6cf0";
 const MIN_SIZE = 1, SNAP_STEP = 5;
+const MAX_SIZE = 10000, MAX_POS = 100000;   // cm: a loaded size is at most 100 m, a position within 1 km
 
 // `z` is how far the bottom of an object is above the floor and `height` its
 // size upwards, both in cm: a window starts at its sill, a shelf can hang on a
@@ -155,18 +156,20 @@ function rectsOverlap(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y <
 function blocksClearance(o) { return o.type === "wall" || !!TYPES[o.type].piece; }
 
 /* ---------- file loading ---------- */
+const LAYOUT_VERSION = 6;
 function num(v, fallback) { const n = typeof v === "string" ? parseFloat(v) : v; return Number.isFinite(n) ? n : fallback; }
+function clampRound(v, lo, hi) { return Math.min(hi, Math.max(lo, Math.round(v))); }
 // Up to version 4 clearance was one depth on one side: {clear: 80, face: "S"}.
 function sanitizeClear(raw, def) {
   const out = { ...NO_CLEAR };
   if (raw.clear && typeof raw.clear === "object") {
-    for (const s of SIDE_KEYS) out[s] = Math.max(0, Math.round(num(raw.clear[s], 0)));
+    for (const s of SIDE_KEYS) out[s] = clampRound(num(raw.clear[s], 0), 0, MAX_SIZE);
     return out;
   }
   const legacy = num(raw.clear, NaN);
   if (Number.isFinite(legacy)) {
     const side = Object.prototype.hasOwnProperty.call(SIDES, raw.face) ? raw.face : "S";
-    out[side] = Math.max(0, Math.round(legacy));
+    out[side] = clampRound(legacy, 0, MAX_SIZE);
     return out;
   }
   return { ...out, ...(def.clear || null) };   // no clearance recorded: type default
@@ -176,19 +179,43 @@ function sanitize(raw, fallbackId) {
   const type = isType(raw.type) ? raw.type : "furniture";
   const def = TYPES[type];
   return {
-    id: Number.isInteger(raw.id) ? raw.id : fallbackId,
+    id: Number.isSafeInteger(raw.id) && raw.id > 0 ? raw.id : fallbackId,
     type,
     label: typeof raw.label === "string" ? raw.label : "",
-    x: Math.round(num(raw.x, 0)), y: Math.round(num(raw.y, 0)),
-    w: Math.max(MIN_SIZE, Math.round(num(raw.w, def.w))),
-    h: Math.max(MIN_SIZE, Math.round(num(raw.h, def.h))),
-    z: Math.max(0, Math.round(num(raw.z, def.z || 0))),
-    height: Math.max(MIN_SIZE, Math.round(num(raw.height, def.height))),
+    x: clampRound(num(raw.x, 0), -MAX_POS, MAX_POS), y: clampRound(num(raw.y, 0), -MAX_POS, MAX_POS),
+    w: clampRound(num(raw.w, def.w), MIN_SIZE, MAX_SIZE),
+    h: clampRound(num(raw.h, def.h), MIN_SIZE, MAX_SIZE),
+    z: clampRound(num(raw.z, def.z || 0), 0, MAX_SIZE),
+    height: clampRound(num(raw.height, def.height), MIN_SIZE, MAX_SIZE),
     color: typeof raw.color === "string" && raw.color ? raw.color : def.color,
     flip: [0, 1, 2, 3].includes(raw.flip) ? raw.flip : 0,
     clear: sanitizeClear(raw, def),
-    wall: Math.max(0, Math.round(num(raw.wall, def.wall || 0))),
+    wall: clampRound(num(raw.wall, def.wall || 0), 0, MAX_SIZE),
     lock: raw.lock === true,
     rot: Number.isFinite(num(raw.rot, NaN)) ? ((Math.round(num(raw.rot, 0)) % 360) + 360) % 360 : 0,
   };
+}
+// Selection and undo find objects by id, so ids must be unique. The first
+// object with an id keeps it; a repeated or missing id gets a new one above the
+// highest id in the list.
+function sanitizeObjects(list) {
+  const objs = list.map((raw) => sanitize(raw, 0)).filter(Boolean);
+  let next = objs.reduce((m, o) => Math.max(m, o.id), 0) + 1;
+  const seen = new Set();
+  for (const o of objs) {
+    if (!o.id || seen.has(o.id)) o.id = next++;
+    seen.add(o.id);
+  }
+  return objs;
+}
+// A saved file: {app: "moebel", version, units, objects}. Throws when `doc` is
+// not one. A file from a newer version still loads, with `newer` set, since
+// the fields this version knows are read the same way.
+function readLayout(doc) {
+  if (!doc || typeof doc !== "object" || doc.app !== "moebel") throw new Error("This is not a Möbel layout file.");
+  if (!Array.isArray(doc.objects)) throw new Error("Missing an 'objects' array.");
+  return { objects: sanitizeObjects(doc.objects), newer: num(doc.version, 0) > LAYOUT_VERSION };
+}
+function layoutJson(objects) {
+  return JSON.stringify({ app: "moebel", version: LAYOUT_VERSION, units: "cm", objects }, null, 2);
 }

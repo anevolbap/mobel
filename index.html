@@ -517,7 +517,7 @@ function restore() {
   try {
     const doc = JSON.parse(raw);
     if (!doc || !Array.isArray(doc.objects) || !doc.objects.length) return false;
-    replaceObjects(doc.objects.map((o, i) => sanitize(o, i + 1)).filter(Boolean));
+    replaceObjects(sanitizeObjects(doc.objects));
     const v = doc.view;
     if (v && Number.isFinite(v.zoom) && Number.isFinite(v.panX) && Number.isFinite(v.panY)) state.view = v;
     return true;
@@ -1151,8 +1151,7 @@ function syncPanel() {
 
 /* ---------- save / load ---------- */
 function save() {
-  const doc = { app: "moebel", version: 6, units: "cm", objects: state.objects };
-  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+  const blob = new Blob([layoutJson(state.objects)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = "layout.json";
@@ -1163,13 +1162,11 @@ function loadFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const doc = JSON.parse(String(reader.result));
-      if (!doc || !Array.isArray(doc.objects)) throw new Error("Missing an 'objects' array.");
-      const objs = [];
-      doc.objects.forEach((raw, i) => { const o = sanitize(raw, i + 1); if (o) objs.push(o); });
-      replaceObjects(objs);
+      const { objects, newer } = readLayout(JSON.parse(String(reader.result)));
+      replaceObjects(objects);
       checkpoint();
       fitView();
+      if (newer) alert("This layout was made by a newer version of Möbel. Fields this version does not know were dropped, and saving will not keep them.");
     } catch (err) { alert(`Could not load layout: ${err.message || err}`); }
   };
   reader.onerror = () => alert("Could not read file.");
@@ -1242,6 +1239,7 @@ btnMeasure.addEventListener("click", () => setMeasuring(!state.measuring));
 const fmtParts = (r) => `Reach ${Math.round(r.reach * 100)}% · Open ${Math.round(r.open * 100)}% · Back gap ${Math.round(r.gap * RA.GAP_CAP)} cm`;
 function startRearrange(room) {
   if ((room.rot || 0) % 360) { alert("Rearrange works only on rooms that are not rotated."); return; }
+  if (!rearrangeFits(room)) { alert(`Rearrange works only on rooms with up to ${RA.MAX_CELLS * RA.CELL * RA.CELL / 10000} m² of floor.`); return; }
   const P = rearrangeProblem(room, state.objects);
   if (!P.movers.length) { alert("This room has no unlocked furniture to move."); return; }
   const ra = { P, now: scoreLayout(P, currentPlacement(P)), results: null, index: 0,

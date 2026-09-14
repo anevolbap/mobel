@@ -11,7 +11,7 @@ for (const file of ["core.js", "rearrange.js"]) {
   const url = new URL(`../${file}`, import.meta.url);
   vm.runInThisContext(readFileSync(url, "utf8"), { filename: url.pathname });
 }
-const E = vm.runInThisContext("({ RA, rearrangeProblem, scoreLayout, searchLayouts, currentPlacement, placedObject, aabb, clearanceWorld, sanitize })");
+const E = vm.runInThisContext("({ RA, rearrangeProblem, scoreLayout, searchLayouts, currentPlacement, placedObject, aabb, clearanceWorld, sanitize, rearrangeFits })");
 
 const NO = { N: 0, E: 0, S: 0, W: 0 };
 function obj(id, type, x, y, w, h, extra = {}) {
@@ -153,6 +153,14 @@ test("a hung shelf leaves the floor open", () => {
   const standing = windowRoom(obj(4, "bookshelf", 0, 0, 120, 30, { height: 160 }));
   const open = (objs) => E.scoreLayout(E.rearrangeProblem(objs[0], objs), [at]).open;
   assert.ok(open(hung) > open(standing), `${open(hung)} <= ${open(standing)}`);
+});
+
+test("a room too large for the grid is refused before any grid is built", () => {
+  assert.ok(E.rearrangeFits(room()[0]));
+  const floor = Math.sqrt(E.RA.MAX_CELLS) * E.RA.CELL;     // the largest square floor, in cm
+  assert.ok(E.rearrangeFits(obj(1, "room", 0, 0, floor + 10, floor + 10, { wall: 10 })));
+  assert.ok(!E.rearrangeFits(obj(1, "room", 0, 0, floor + 20, floor + 20, { wall: 10 })));
+  assert.ok(!E.rearrangeFits(obj(1, "room", 0, 0, 200000, 200000, { wall: 15 })));
 });
 
 function aabbOf(o) { return E.aabb(o); }

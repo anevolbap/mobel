@@ -1,0 +1,10 @@
+{
+  "app": "moebel",
+  "version": 3,
+  "units": "cm",
+  "objects": [
+    { "id": 1, "type": "room", "label": "Room", "x": 0, "y": 0, "w": 400, "h": 300, "color": "#6f8794", "flip": 0, "clear": 0, "face": "S", "rot": 0 },
+    { "id": 2, "type": "desk", "label": "Desk", "x": 20, "y": 20, "w": 140, "h": 70, "color": "#1b6cf0", "flip": 0, "clear": 50, "face": "E", "rot": 0 },
+    { "id": 3, "type": "fridge", "label": "Fridge", "x": 300, "y": 20, "w": 60, "h": 65, "color": "#0891b2", "flip": 0, "clear": 0, "face": "S", "rot": 0 }
+  ]
+}

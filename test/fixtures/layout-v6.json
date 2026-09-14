@@ -1,0 +1,11 @@
+{
+  "app": "moebel",
+  "version": 6,
+  "units": "cm",
+  "objects": [
+    { "id": 1, "type": "room", "label": "Study", "x": 0, "y": 0, "w": 300, "h": 300, "z": 0, "height": 260, "color": "#6f8794", "flip": 0, "clear": { "N": 0, "E": 0, "S": 0, "W": 0 }, "wall": 15, "lock": false, "rot": 0 },
+    { "id": 2, "type": "door", "label": "Door", "x": 250, "y": 150, "w": 80, "h": 15, "z": 0, "height": 210, "color": "#b07a3c", "flip": 1, "clear": { "N": 0, "E": 0, "S": 0, "W": 0 }, "wall": 0, "lock": false, "rot": 270 },
+    { "id": 3, "type": "desk", "label": "Desk", "x": 20, "y": 20, "w": 140, "h": 70, "z": 0, "height": 75, "color": "#1b6cf0", "flip": 0, "clear": { "N": 0, "E": 0, "S": 80, "W": 0 }, "wall": 0, "lock": true, "rot": 0 },
+    { "id": 5, "type": "bookshelf", "label": "Shelf over desk", "x": 30, "y": 10, "w": 80, "h": 28, "z": 120, "height": 40, "color": "#aa3355", "flip": 0, "clear": { "N": 0, "E": 0, "S": 0, "W": 0 }, "wall": 0, "lock": false, "rot": 0 }
+  ]
+}

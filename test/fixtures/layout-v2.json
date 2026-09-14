@@ -1,0 +1,11 @@
+{
+  "app": "moebel",
+  "version": 2,
+  "units": "cm",
+  "objects": [
+    { "id": 1, "type": "wall", "label": "Wall", "x": 0, "y": 0, "w": 300, "h": 12, "color": "#3a3a42", "flip": 0, "rot": 0 },
+    { "id": 2, "type": "window", "label": "Window", "x": 100, "y": 0, "w": 100, "h": 12, "color": "#3d8bd4", "flip": 0, "rot": 0 },
+    { "id": 3, "type": "door", "label": "Door", "x": -34, "y": 100, "w": 80, "h": 12, "color": "#b07a3c", "flip": 2, "rot": 90 },
+    { "id": 4, "type": "bookshelf", "label": "Shelf", "x": 20, "y": 20, "w": 80, "h": 28, "color": "#8a6d3b", "flip": 0, "rot": 0 }
+  ]
+}

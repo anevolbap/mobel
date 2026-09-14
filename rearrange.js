@@ -20,6 +20,7 @@ const RA = {
   WINDOW_DEPTH: 30, // cm on each side of a window's centreline kept below its sill
   W_REACH: 1, W_OPEN: 0.5, W_GAP: 0.3, W_BAD: 20,
   T0: 0.05, T1: 0.0005,
+  MAX_CELLS: 160000, // 400 m² of floor: one search run there takes about 5 s
 };
 const RA_FAR = 1e6;
 const RA_DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];   // N E S W in world space
@@ -68,6 +69,11 @@ function fillCells(P, arr, r) {
   const c = cellRange(P, r);
   if (!c) return;
   for (let j = c[2]; j <= c[3]; j++) for (let i = c[0]; i <= c[1]; i++) arr[j * P.W + i] = 1;
+}
+// A larger floor makes a grid too slow to search, or too big to allocate.
+function rearrangeFits(room) {
+  const t = room.wall || 0;
+  return Math.floor((room.w - t) / RA.CELL) * Math.floor((room.h - t) / RA.CELL) <= RA.MAX_CELLS;
 }
 // Everything about a room that stays the same while pieces move.
 function rearrangeProblem(room, objects) {

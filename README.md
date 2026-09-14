@@ -32,7 +32,8 @@ node --test test/*.test.mjs
 Needs Node 18 or newer (tested on 24) and nothing else. The tests load `core.js`
 and `rearrange.js` the same way the page does, cut the 3D scene builder (which
 has no DOM code) out of `view3d.js`, and check the results with their own box
-math. The drawing and the pointer interaction have no automated tests.
+math. Old layout files in `test/fixtures` check that each file version still
+loads. The drawing and the pointer interaction have no automated tests.
 
 ## Use
 
@@ -146,7 +147,19 @@ A saved layout is JSON:
 - Objects are painted in array order, so the first one is at the back.
 
 On load, a missing or broken field falls back to a safe value: 0 for the
-position, the type's default for size, height, colour, clearance and wall.
+position, the type's default for size, height, colour, clearance and wall. A
+number that is not finite counts as broken. Other numbers are kept in range:
+`w`, `h`, `z`, `height`, `wall` and each `clear` side go up to 10000 cm (100 m),
+and `x`, `y` stay between -100000 and 100000 cm (1 km).
+
+Every object needs its own `id`. If two objects share an id, the first keeps
+it and the other gets a new one above the highest id in the file. An object
+with no id gets a new one too.
+
+A file without `"app": "moebel"` or without an `objects` array is refused with
+a message. A file with a higher `version` than this Möbel saves still loads,
+but a message warns that fields this version does not know were dropped and
+will not be saved.
 
 ## Notes
 
@@ -189,6 +202,8 @@ against a wall, shift it, turn it or swap two pieces. Weights are in `RA`.
 Known limits of Rearrange:
 
 - Only rooms at rotation 0 are supported, and pieces snap to 90° turns.
+- Rooms with more than 400 m² of floor inside the walls are refused, because
+  the search gets too slow (about 40 s at 400 m², measured in Node).
 - A hanging piece still gets pushed against a wall like a floor piece, and the
   person walking in is not checked against its height.
 - A piece belongs to the room that holds its centre.
