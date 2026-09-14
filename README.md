@@ -54,6 +54,13 @@ The whole app is one self-contained file with inline CSS and a single classic
 - Every change is undoable, and the layout is kept in `localStorage`, so a reload
   brings back the last session. **File ▾ → Reset to sample** goes back to the
   demo room. **File ▾ → Print** prints the plan alone, without the interface.
+- **Rearrange** (in a room's sidebar) looks for new layouts of the furniture in
+  that room and shows the best five in place. **Prev** and **Next** (or the
+  arrow keys) step through them, **Apply** (or `Enter`) keeps one as a single
+  undo step, **Cancel** (or `Esc`) puts everything back. Tick **Locked** on a
+  piece to keep it where it is, for example a built-in wardrobe. Doors, windows
+  and walls never move. Each run starts from a new random seed, so pressing
+  Rearrange again gives other ideas.
 
 ### Keyboard
 
@@ -77,3 +84,17 @@ default 15 cm walls, and a version 4 `clear: 80, face: "S"` becomes
 Room walls are four bands in the room's own frame, cut by interval subtraction
 wherever a door or window overlaps them, so an opening is a real gap and not a
 rectangle painted on top.
+
+Rearrange turns the floor inside the walls into a 5 cm grid and scores a layout
+on it. Reach is the share of every piece's clearance that a 60 cm wide person
+coming in the door can get to. Open is the share of floor at least 50 cm from
+anything. Back gap is how far a piece's back side stands from a wall or another
+piece (the back is the side opposite its clearance). Overlaps, pieces outside
+the room and pieces in a door's swing are penalised, and layouts with any of
+them are never shown. Simulated annealing runs 8 times, the first from the
+current layout and the rest from random wall positions, with moves that push a piece
+against a wall, shift it, turn it or swap two pieces. Weights are in `RA`.
+Only rooms at rotation 0 are supported, and pieces snap to 90° turns.
+
+The engine has no DOM code, so `node --test test/rearrange.test.mjs` loads it
+straight out of `index.html` and checks its results.
