@@ -44,6 +44,10 @@ interaction have no automated tests.
   rotate handles appear only when a single object is selected.
 - **Front** and **Back** change the paint order.
 - Edit the exact label, type, position, size, rotation and colour in the sidebar.
+- **Above floor** and **Height** give an object its vertical size in centimetres.
+  A window starts at its 90 cm sill, and a shelf can hang on a wall above a
+  desk. Each type comes with a height (door 210, wardrobe 200, desk 75, bed 50).
+  For a room, **Wall height** is the height of its walls.
 - Doors show a swing arc; **Flip swing** changes the hinge. Orientation follows width vs height.
 - The selected object shows its `W×H` in centimetres.
 - **Clearance** draws a dashed band for the free space a piece needs beyond its
@@ -91,10 +95,10 @@ A saved layout is JSON:
 
 ```json
 {
-  "app": "moebel", "version": 5, "units": "cm",
+  "app": "moebel", "version": 6, "units": "cm",
   "objects": [
     { "id": 2, "type": "desk", "label": "Desk", "x": 40, "y": 40, "w": 140, "h": 60,
-      "rot": 0, "color": "#1b6cf0", "flip": 0,
+      "z": 0, "height": 75, "rot": 0, "color": "#1b6cf0", "flip": 0,
       "clear": { "N": 0, "E": 0, "S": 80, "W": 0 }, "wall": 0, "lock": false }
   ]
 }
@@ -105,6 +109,8 @@ A saved layout is JSON:
   unknown type loads as `furniture`.
 - `x`, `y` is the top-left corner and `w`, `h` the size, all in cm, before
   rotation. `rot` is in degrees, clockwise, around the centre.
+- `z` is the height of the object's bottom above the floor and `height` its
+  size upwards, in cm. A room's `height` is its wall height.
 - `clear` is the clearance depth per side in the object's own frame: `N` is the
   top edge before rotation.
 - `wall` is a room's wall thickness. `flip` (0 to 3) is a door's hinge side.
@@ -112,7 +118,7 @@ A saved layout is JSON:
 - Objects are painted in array order, so the first one is at the back.
 
 On load, a missing or broken field falls back to a safe value: 0 for the
-position, the type's default for size, colour, clearance and wall.
+position, the type's default for size, height, colour, clearance and wall.
 
 ## Notes
 
@@ -124,7 +130,8 @@ degrees and too large at other angles.
 
 Undo stores JSON snapshots of `state.objects`, one per finished gesture, capped
 at 50. Paint order is array order, so z-order is a move inside the array. Saved
-files are version 5; older files load. A room from an older file picks up the
+files are version 6; older files load. An object from a version 5 file picks up
+its type's `z` and `height`, a room from an older file picks up the
 default 15 cm walls, and a version 4 `clear: 80, face: "S"` becomes
 `clear: {N: 0, E: 0, S: 80, W: 0}`.
 

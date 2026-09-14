@@ -276,6 +276,10 @@
             <span>Rotation (°) · press R for 90°</span>
             <input id="f-rot" type="number" step="15" />
           </label>
+          <div class="grid2">
+            <label class="field" id="f-z-field"><span>Above floor (cm)</span><input id="f-z" type="number" step="1" min="0" /></label>
+            <label class="field"><span id="f-height-label">Height (cm)</span><input id="f-height" type="number" step="1" min="1" /></label>
+          </div>
           <div class="field" id="f-clear-row">
             <span>Clearance per side (cm)</span>
             <div class="clearpad">
@@ -347,6 +351,9 @@ const DEFAULT_FURNITURE_COLOR = "#1b6cf0";
 const MIN_SIZE = 1, SNAP_STEP = 5;
 const SNAP_DIST = 8; // px: magnet pull distance to other objects' edges
 
+// `z` is how far the bottom of an object is above the floor and `height` its
+// size upwards, both in cm: a window starts at its sill, a shelf can hang on a
+// wall. A room's height is the height of its walls.
 // `clear` is the free space a piece needs beyond its own footprint, in cm per
 // side: a fridge door swings at the front, a double bed needs both flanks. The
 // sides are in the object's own frame, so they turn with the object.
@@ -354,19 +361,19 @@ const SIDES = { N: "Top", E: "Right", S: "Bottom", W: "Left" };
 const SIDE_KEYS = Object.keys(SIDES);
 const NO_CLEAR = { N: 0, E: 0, S: 0, W: 0 };
 const TYPES = {
-  room:       { name: "Room",        w: 400, h: 300, color: "#6f8794", wall: 15 },
-  wall:       { name: "Wall",        w: 300, h: 12,  color: DEFAULT_WALL_COLOR },
-  door:       { name: "Door",        w: 80,  h: 12,  color: "#b07a3c" },
-  window:     { name: "Window",      w: 100, h: 12,  color: "#3d8bd4" },
-  tallwindow: { name: "Tall window", w: 160, h: 12,  color: "#1f9aad" },
-  bookshelf:  { name: "Bookshelf",   w: 80,  h: 28,  color: "#8a6d3b",              piece: true },
-  furniture:  { name: "Furniture",   w: 120, h: 60,  color: DEFAULT_FURNITURE_COLOR, piece: true },
-  fridge:     { name: "Fridge",      w: 60,  h: 65,  color: "#0891b2", piece: true, clear: { S: 100 } },
-  desk:       { name: "Desk",        w: 140, h: 70,  color: "#1b6cf0", piece: true, clear: { S: 80 } },
-  table:      { name: "Table",       w: 120, h: 80,  color: "#ca8a04", piece: true, clear: { N: 75, E: 75, S: 75, W: 75 } },
-  bed:        { name: "Bed",         w: 140, h: 200, color: "#7c3aed", piece: true, clear: { E: 60, W: 60 } },
-  sofa:       { name: "Sofa",        w: 200, h: 90,  color: "#16a34a", piece: true, clear: { S: 60 } },
-  wardrobe:   { name: "Wardrobe",    w: 120, h: 60,  color: "#8a6d3b", piece: true, clear: { S: 90 } },
+  room:       { name: "Room",        w: 400, h: 300, height: 250, color: "#6f8794", wall: 15 },
+  wall:       { name: "Wall",        w: 300, h: 12,  height: 250, color: DEFAULT_WALL_COLOR },
+  door:       { name: "Door",        w: 80,  h: 12,  height: 210, color: "#b07a3c" },
+  window:     { name: "Window",      w: 100, h: 12,  height: 120, z: 90, color: "#3d8bd4" },
+  tallwindow: { name: "Tall window", w: 160, h: 12,  height: 220, color: "#1f9aad" },
+  bookshelf:  { name: "Bookshelf",   w: 80,  h: 28,  height: 180, color: "#8a6d3b",              piece: true },
+  furniture:  { name: "Furniture",   w: 120, h: 60,  height: 75,  color: DEFAULT_FURNITURE_COLOR, piece: true },
+  fridge:     { name: "Fridge",      w: 60,  h: 65,  height: 180, color: "#0891b2", piece: true, clear: { S: 100 } },
+  desk:       { name: "Desk",        w: 140, h: 70,  height: 75,  color: "#1b6cf0", piece: true, clear: { S: 80 } },
+  table:      { name: "Table",       w: 120, h: 80,  height: 75,  color: "#ca8a04", piece: true, clear: { N: 75, E: 75, S: 75, W: 75 } },
+  bed:        { name: "Bed",         w: 140, h: 200, height: 50,  color: "#7c3aed", piece: true, clear: { E: 60, W: 60 } },
+  sofa:       { name: "Sofa",        w: 200, h: 90,  height: 85,  color: "#16a34a", piece: true, clear: { S: 60 } },
+  wardrobe:   { name: "Wardrobe",    w: 120, h: 60,  height: 200, color: "#8a6d3b", piece: true, clear: { S: 90 } },
 };
 const TYPE_KEYS = Object.keys(TYPES);
 const PALETTE = ["#1b6cf0","#16a34a","#ea580c","#dc2626","#7c3aed","#0891b2","#ca8a04","#3a3a42"];
@@ -416,7 +423,7 @@ function spawnDefaults(type) {
   const t = TYPES[isType(type) ? type : "furniture"];
   return {
     type: isType(type) ? type : "furniture",
-    w: t.w, h: t.h,
+    w: t.w, h: t.h, z: t.z || 0, height: t.height,
     label: type === "furniture" ? "Furniture" : t.name,
     color: t.color, flip: 0, rot: 0,
     clear: { ...NO_CLEAR, ...(t.clear || null) },   // copied, never shared
@@ -445,7 +452,7 @@ function toggleSelect(id) {
   if (i === -1) state.sel.push(id); else state.sel.splice(i, 1);
 }
 function addObject(partial) {
-  const o = { id: state.nextId++, type: "furniture", label: "", x: 0, y: 0, w: 60, h: 60,
+  const o = { id: state.nextId++, type: "furniture", label: "", x: 0, y: 0, w: 60, h: 60, z: 0, height: 75,
     color: DEFAULT_FURNITURE_COLOR, flip: 0, rot: 0, clear: { ...NO_CLEAR }, wall: 0, lock: false, ...partial };
   state.objects.push(o);
   return o;
@@ -1491,11 +1498,12 @@ $("f-flip").addEventListener("click", () => { const s = getSelected(); if (s) { 
 $("f-lock").addEventListener("change", (e) => commit("lock", e.target.checked));   // the change listener below checkpoints
 // Typing is one undo step per finished edit, not per keystroke.
 for (const f of $("panel-editor").querySelectorAll("input, select")) f.addEventListener("change", checkpoint);
-for (const key of ["x", "y", "w", "h"]) {
+for (const key of ["x", "y", "w", "h", "z", "height"]) {
   $("f-" + key).addEventListener("input", (e) => {
     let v = parseFloat(e.target.value);
     if (Number.isNaN(v)) return;
-    if (key === "w" || key === "h") v = Math.max(MIN_SIZE, v);
+    if (key === "w" || key === "h" || key === "height") v = Math.max(MIN_SIZE, v);
+    if (key === "z") v = Math.max(0, v);
     commit(key, v);
   });
 }
@@ -1531,10 +1539,14 @@ function syncPanel() {
   set($("f-w"), Math.round(sel.w));
   set($("f-h"), Math.round(sel.h));
   set($("f-rot"), Math.round(sel.rot || 0));
+  set($("f-z"), Math.round(sel.z || 0));
+  set($("f-height"), Math.round(sel.height));
   for (const s of SIDE_KEYS) set($("f-clear-" + s), Math.round(clearDepth(sel, s)));
   set($("f-wall"), Math.round(sel.wall || 0));
   const isRoom = sel.type === "room";
   $("f-wall-field").hidden = !isRoom;
+  $("f-z-field").hidden = isRoom;
+  $("f-height-label").textContent = isRoom ? "Wall height (cm)" : "Height (cm)";
   $("f-clear-row").hidden = isRoom;
   $("f-rearrange-field").hidden = !isRoom;
   $("f-lock-field").hidden = !TYPES[sel.type].piece;
@@ -1545,7 +1557,7 @@ function syncPanel() {
 
 /* ---------- save / load ---------- */
 function save() {
-  const doc = { app: "moebel", version: 5, units: "cm", objects: state.objects };
+  const doc = { app: "moebel", version: 6, units: "cm", objects: state.objects };
   const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1580,6 +1592,8 @@ function sanitize(raw, fallbackId) {
     x: Math.round(num(raw.x, 0)), y: Math.round(num(raw.y, 0)),
     w: Math.max(MIN_SIZE, Math.round(num(raw.w, def.w))),
     h: Math.max(MIN_SIZE, Math.round(num(raw.h, def.h))),
+    z: Math.max(0, Math.round(num(raw.z, def.z || 0))),
+    height: Math.max(MIN_SIZE, Math.round(num(raw.height, def.height))),
     color: typeof raw.color === "string" && raw.color ? raw.color : def.color,
     flip: [0, 1, 2, 3].includes(raw.flip) ? raw.flip : 0,
     clear: sanitizeClear(raw, def),

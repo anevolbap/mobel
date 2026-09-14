@@ -110,5 +110,17 @@ test("lock survives a save and load, and old files load unlocked", () => {
   assert.equal(E.sanitize(old, 1).lock, false);
 });
 
+test("heights survive a save and load, and old files get the type's heights", () => {
+  const shelf = E.sanitize({ id: 1, type: "bookshelf", x: 0, y: 0, w: 80, h: 28, z: 120, height: 40 }, 1);
+  assert.equal(shelf.z, 120);
+  assert.equal(shelf.height, 40);
+  const old = (type) => E.sanitize({ id: 1, type, x: 0, y: 0, w: 100, h: 12 }, 1);
+  assert.deepEqual([old("window").z, old("window").height], [90, 120]);
+  assert.deepEqual([old("door").z, old("door").height], [0, 210]);
+  assert.deepEqual([old("room").z, old("room").height], [0, 250]);
+  const broken = E.sanitize({ id: 1, type: "desk", z: -5, height: "abc" }, 1);
+  assert.deepEqual([broken.z, broken.height], [0, 75]);
+});
+
 function aabbOf(o) { return E.aabb(o); }
 function fmt(r) { return `score ${r.score.toFixed(3)} reach ${r.reach.toFixed(2)} open ${r.open.toFixed(2)} gap ${r.gap.toFixed(2)} bad ${r.bad}`; }
