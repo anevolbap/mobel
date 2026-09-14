@@ -72,7 +72,8 @@ function sceneBoxes(objects) {
 
 // Walking: a person is a circle in plan. Only things between the knees and the
 // top of the head block, so a rug, a door lintel and a high shelf let you pass.
-const WALK = { EYE: 160, RADIUS: 20, KNEE: 30, HEAD: 180, SPEED: 140, RUN: 320 };
+// FOV is the vertical field of view in degrees: wide, so a small room still fits on screen.
+const WALK = { EYE: 160, RADIUS: 20, KNEE: 30, HEAD: 180, SPEED: 70, RUN: 180, FOV: 80, FOV_MIN: 40, FOV_MAX: 110 };
 function walkBlocked(boxes, x, y) {
   for (const b of boxes) {
     if (b.y1 <= WALK.KNEE || b.y0 >= WALK.HEAD) continue;
@@ -96,6 +97,7 @@ const v3 = {
   gl: null, prog: null, buf: null, opaque: 0, glass: 0,
   yaw: 0, pitch: 0.95, dist: 1000, tx: 0, ty: 0,   // orbit camera: radians, cm; target in plan
   boxes: [], eye: { x: 0, y: 0 }, look: 0,          // walk: where you stand in plan, and how far up you look
+  fov: WALK.FOV,                                    // walk: degrees, the scroll wheel changes it
   keys: new Set(), last: 0, moved: false, unlockedAt: 0,
 };
 const canvas3d = $("canvas3d"), hint3d = $("hint3d"), btn3d = $("btn-3d"), btnWalk = $("btn-walk");
@@ -190,11 +192,12 @@ function upload3d(boxes) {
 function camera3d() {
   if (state.mode3d === "walk") {
     const eye = [v3.eye.x, WALK.EYE, v3.eye.y], cl = Math.cos(v3.look);
-    return { eye, target: [eye[0] - Math.sin(v3.yaw) * cl, eye[1] + Math.sin(v3.look), eye[2] - Math.cos(v3.yaw) * cl], near: 5 };
+    return { eye, target: [eye[0] - Math.sin(v3.yaw) * cl, eye[1] + Math.sin(v3.look), eye[2] - Math.cos(v3.yaw) * cl], near: 5,
+      fov: (v3.fov * Math.PI) / 180 };
   }
   const cp = Math.cos(v3.pitch);
   const eye = [v3.tx + v3.dist * cp * Math.sin(v3.yaw), 60 + v3.dist * Math.sin(v3.pitch), v3.ty + v3.dist * cp * Math.cos(v3.yaw)];
-  return { eye, target: [v3.tx, 60, v3.ty], near: 5 };
+  return { eye, target: [v3.tx, 60, v3.ty], near: 5, fov: Math.PI / 3.4 };
 }
 function drawFrame() {
   const gl = v3.gl, dpr = window.devicePixelRatio || 1;
@@ -208,7 +211,7 @@ function drawFrame() {
   gl.useProgram(v3.prog);
   const cam = camera3d();
   gl.uniformMatrix4fv(gl.getUniformLocation(v3.prog, "uMatrix"), false,
-    mul4(perspective(Math.PI / 3.4, W / H, cam.near, 100000), lookAt(cam.eye, cam.target)));
+    mul4(perspective(cam.fov, W / H, cam.near, 100000), lookAt(cam.eye, cam.target)));
   gl.bindBuffer(gl.ARRAY_BUFFER, v3.buf);
   [["aPos", 0], ["aNormal", 3], ["aColor", 6]].forEach(([name, off]) => {
     const loc = gl.getAttribLocation(v3.prog, name);
@@ -247,8 +250,8 @@ function fit3d() {
 const locked = () => document.pointerLockElement === canvas3d;
 function hint3dText() {
   if (state.mode3d === "orbit") return "Drag to turn · Shift+drag to pan · scroll to zoom · Walk to go inside";
-  return locked() ? "WASD or arrows to walk · Shift to run · mouse to look · Esc frees the mouse"
-    : "Click to look with the mouse (or drag) · WASD or arrows to walk · Esc or Walk to stop";
+  return locked() ? "WASD or arrows to walk · Shift to run · mouse to look · scroll to zoom · Esc frees the mouse"
+    : "Click to look with the mouse (or drag) · WASD or arrows to walk · scroll to zoom · Esc or Walk to stop";
 }
 function set3d(mode) {
   if (mode && !v3.gl && !init3d()) { alert("This browser cannot draw the 3D view (no WebGL)."); return; }
@@ -351,7 +354,11 @@ canvas3d.addEventListener("pointercancel", () => { drag3d = null; });
 canvas3d.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas3d.addEventListener("wheel", (e) => {
   e.preventDefault();
-  if (state.mode3d !== "orbit") return;
+  if (state.mode3d === "walk") {   // wider or narrower view, you stay where you are
+    v3.fov = Math.max(WALK.FOV_MIN, Math.min(WALK.FOV_MAX, v3.fov * Math.exp(e.deltaY * 0.001)));
+    drawFrame();
+    return;
+  }
   v3.dist = Math.max(50, Math.min(20000, v3.dist * Math.exp(e.deltaY * 0.0015)));
   drawFrame();
 }, { passive: false });

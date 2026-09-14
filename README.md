@@ -87,7 +87,9 @@ math. The drawing and the pointer interaction have no automated tests.
 - **Walk** (in the 3D view) puts you at eye height (160 cm) where the 3D camera
   was looking, facing the same way. Click the view to look with the mouse, or
   drag if the browser does not lock the pointer. `W` `A` `S` `D` or the arrow
-  keys walk, Shift runs. You cannot walk through walls, windows or furniture,
+  keys walk (70 cm per second, so crossing a 3 m room takes a few seconds),
+  Shift runs. The view is wide (80°) so a small room fits on screen, and scroll
+  makes it wider or narrower (40° to 110°). You cannot walk through walls, windows or furniture,
   but anything that is all below 30 cm or all above 180 cm lets you pass, so
   you walk through a door gap and under a high shelf. The first `Esc` frees the
   mouse, the next one (or **Walk** again) goes back to turning around the layout.
