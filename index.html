@@ -877,6 +877,26 @@ function spawn(type) {
 
 /* ---------- pointer + keyboard interaction ---------- */
 let drag = null;
+// Fingers on the plan: pointer id -> px inside the svg. When a second finger
+// lands, the plan goes back to how it was when the first one landed (only the
+// view keeps its changes), and the two fingers zoom and pan until one lifts.
+const touches = new Map();
+let touchStart = null, pinch = null;
+function svgPoint(e) { const r = svg.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function startPinch() {
+  if (drag) {
+    // objects are only replaced for an edit: a Rearrange preview holds on to its pieces
+    if (drag.mode === "move" || drag.mode === "resize" || drag.mode === "rotate") state.objects = JSON.parse(touchStart.objects);
+    state.sel = touchStart.sel;
+    state.measure = touchStart.measure;
+    drag = null;
+    state.guides.x = state.guides.y = null;
+    state.marquee = null;
+  }
+  const [a, b] = touches.values();
+  pinch = { view: { ...state.view }, ids: [...touches.keys()], a, b };
+  onChange();
+}
 // Tape ends land on a nearby object edge, else free. Alt measures raw.
 function measurePoint(world, e) {
   if (!state.snap || e.altKey) return { x: Math.round(world.x), y: Math.round(world.y) };
@@ -888,6 +908,12 @@ function typingInField() {
   return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable);
 }
 svg.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "touch") {
+    if (!touches.size) touchStart = { objects: snapshot(), sel: state.sel.slice(), measure: state.measure };
+    touches.set(e.pointerId, svgPoint(e));
+    if (touches.size === 2) startPinch();
+    if (touches.size > 1) { svg.setPointerCapture(e.pointerId); return; }
+  }
   const world = screenToWorld(e.clientX, e.clientY);
   if (!world) return;
   drag = null;
@@ -936,6 +962,14 @@ svg.addEventListener("pointerdown", (e) => {
 svg.addEventListener("pointermove", (e) => {
   const world = screenToWorld(e.clientX, e.clientY);
   if (world) elCursor.textContent = `${Math.round(world.x)}, ${Math.round(world.y)} cm`;
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, svgPoint(e));
+  if (pinch) {
+    if (!pinch.ids.includes(e.pointerId)) return;
+    const [a, b] = pinch.ids.map((id) => touches.get(id));
+    state.view = pinchView(pinch.view, pinch.a, pinch.b, a, b, clampZoom);
+    onChange();
+    return;
+  }
   if (!drag) return;
   if (drag.mode === "pan") {
     state.view.panX = drag.panX + (e.clientX - drag.startX);
@@ -999,6 +1033,8 @@ svg.addEventListener("pointermove", (e) => {
   }
 });
 function endDrag(e) {
+  touches.delete(e.pointerId);
+  if (pinch && pinch.ids.includes(e.pointerId)) pinch = null;
   if (drag && svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
   const was = drag;
   drag = null;

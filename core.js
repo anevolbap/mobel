@@ -75,6 +75,16 @@ function rotatePoint(px, py, cx, cy, deg) {
   return { x: cx + dx * Math.cos(r) - dy * Math.sin(r), y: cy + dx * Math.sin(r) + dy * Math.cos(r) };
 }
 function angleDeg(px, py, cx, cy) { return (Math.atan2(py - cy, px - cx) * 180) / Math.PI; }
+// Two fingers on the plan. `view` ({panX, panY, zoom}) and fingers a0, b0 are
+// from when the second finger landed, a1, b1 are where the fingers are now, all
+// in screen px. The zoom follows how far apart the fingers are, and the world
+// point that was under their midpoint stays under their midpoint.
+function pinchView(view, a0, b0, a1, b1, clamp) {
+  const d0 = Math.hypot(b0.x - a0.x, b0.y - a0.y), d1 = Math.hypot(b1.x - a1.x, b1.y - a1.y);
+  const zoom = clamp(d0 > 0 ? (view.zoom * d1) / d0 : view.zoom);
+  const wx = ((a0.x + b0.x) / 2 - view.panX) / view.zoom, wy = ((a0.y + b0.y) / 2 - view.panY) / view.zoom;
+  return { panX: (a1.x + b1.x) / 2 - wx * zoom, panY: (a1.y + b1.y) / 2 - wy * zoom, zoom };
+}
 // Frames everything that is drawn: rotated footprints and clearance bands too.
 function contentBounds(objs) {
   if (!objs.length) return null;

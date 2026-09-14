@@ -50,6 +50,10 @@ loads. The drawing and the pointer interaction have no automated tests.
   inner face of the wall, so a sofa lands against it, not inside it.
 - Drag empty space to pan; scroll to zoom toward the cursor; **Fit** frames everything.
 - Click to select; drag to move; drag the corner handle to resize; drag the round knob to rotate.
+- On a touch screen one finger works like the mouse: tap to select, drag an
+  object to move it, drag empty space to pan. Pinch with two fingers to zoom,
+  and move both fingers to pan. The second finger cancels what the first one
+  started, so a pinch that begins on an object leaves it where it was.
 - **Shift+click** adds to the selection, **Shift+drag** on empty space draws a
   selection box. Dragging one selected object moves the whole group. Resize and
   rotate handles appear only when a single object is selected.
@@ -90,7 +94,7 @@ loads. The drawing and the pointer interaction have no automated tests.
   Rearrange again gives other ideas.
 
 - **3D** shows the layout raised to its heights. Drag to turn around it,
-  Shift+drag (or right-drag) to pan, scroll to zoom. Doors and windows cut the
+  Shift+drag (or right-drag) to pan, scroll or pinch to zoom. Doors and windows cut the
   walls at their own heights, so a window leaves wall below its sill and above
   its top. A window has a frame and glass, a door has a frame and its leaf
   standing open on the side of its swing, and both show even with no wall
@@ -102,7 +106,8 @@ loads. The drawing and the pointer interaction have no automated tests.
   drag if the browser does not lock the pointer. `W` `A` `S` `D` or the arrow
   keys walk (70 cm per second, so crossing a 3 m room takes a few seconds),
   Shift runs. The view is wide (80°) so a small room fits on screen, and scroll
-  makes it wider or narrower (40° to 110°). You cannot walk through walls, windows or furniture,
+  (or a pinch) makes it wider or narrower (40° to 110°). On a touch screen you
+  can look around by dragging, but walking needs a keyboard. You cannot walk through walls, windows or furniture,
   but anything that is all below 30 cm or all above 180 cm lets you pass, so
   you walk through a door gap and under a high shelf. The first `Esc` frees the
   mouse, the next one (or **Walk** again) goes back to turning around the layout.

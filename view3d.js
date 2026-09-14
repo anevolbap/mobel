@@ -358,12 +358,36 @@ window.addEventListener("keyup", (e) => { v3.keys.delete(e.code); }, true);
 window.addEventListener("blur", () => v3.keys.clear());
 
 let drag3d = null;
+// Fingers on the 3D view: pointer id -> screen px. Two of them pinch to zoom,
+// and nothing turns until both have lifted.
+const touches3d = new Map();
+function spread3d() {
+  if (touches3d.size !== 2) return 0;
+  const [a, b] = touches3d.values();
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+// k above 1 zooms out. The scroll wheel and a pinch both end here.
+function zoom3d(k) {
+  if (state.mode3d === "walk") {   // wider or narrower view, you stay where you are
+    v3.fov = Math.max(WALK.FOV_MIN, Math.min(WALK.FOV_MAX, v3.fov * k));
+  } else {
+    v3.dist = Math.max(50, Math.min(20000, v3.dist * k));
+  }
+  drawFrame();
+}
 canvas3d.addEventListener("pointerdown", (e) => {
   if (state.mode3d === "walk" && !locked() && canvas3d.requestPointerLock) canvas3d.requestPointerLock();
-  drag3d = { x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 2 };
+  if (e.pointerType === "touch") touches3d.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  drag3d = touches3d.size > 1 ? null : { x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 2 };
   canvas3d.setPointerCapture(e.pointerId);
 });
 canvas3d.addEventListener("pointermove", (e) => {
+  if (touches3d.has(e.pointerId)) {
+    const before = spread3d();
+    touches3d.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const now = spread3d();
+    if (before > 0 && now > 0) { zoom3d(before / now); return; }
+  }
   if (!drag3d) return;
   const dx = e.clientX - drag3d.x, dy = e.clientY - drag3d.y;
   drag3d.x = e.clientX; drag3d.y = e.clientY;
@@ -382,16 +406,10 @@ canvas3d.addEventListener("pointermove", (e) => {
   }
   drawFrame();
 });
-canvas3d.addEventListener("pointerup", () => { drag3d = null; });
-canvas3d.addEventListener("pointercancel", () => { drag3d = null; });
+canvas3d.addEventListener("pointerup", (e) => { touches3d.delete(e.pointerId); drag3d = null; });
+canvas3d.addEventListener("pointercancel", (e) => { touches3d.delete(e.pointerId); drag3d = null; });
 canvas3d.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas3d.addEventListener("wheel", (e) => {
   e.preventDefault();
-  if (state.mode3d === "walk") {   // wider or narrower view, you stay where you are
-    v3.fov = Math.max(WALK.FOV_MIN, Math.min(WALK.FOV_MAX, v3.fov * Math.exp(e.deltaY * 0.001)));
-    drawFrame();
-    return;
-  }
-  v3.dist = Math.max(50, Math.min(20000, v3.dist * Math.exp(e.deltaY * 0.0015)));
-  drawFrame();
+  zoom3d(Math.exp(e.deltaY * (state.mode3d === "walk" ? 0.001 : 0.0015)));
 }, { passive: false });
