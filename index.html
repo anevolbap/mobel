@@ -140,7 +140,8 @@
       padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
     }
     .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+    /* minmax(0, …): a number input is wider than half the sidebar by default */
+    .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; }
     .grid2[hidden] { display: none; }
     /* clearance pad: the four inputs sit where their side is */
     .clearpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
