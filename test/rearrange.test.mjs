@@ -122,5 +122,55 @@ test("heights survive a save and load, and old files get the type's heights", ()
   assert.deepEqual([broken.z, broken.height], [0, 75]);
 });
 
+// A 300 x 300 room, door on the east wall, window on the north wall from x 100 to 220, sill at 90 cm.
+function windowRoom(...pieces) {
+  return [obj(1, "room", 0, 0, 300, 300, { wall: 10, height: 250 }),
+    obj(2, "door", 285, 180, 80, 10, { rot: 90, height: 210 }),
+    obj(3, "window", 100, -5, 120, 10, { z: 90, height: 120 }), ...pieces];
+}
+
+test("a tall piece cannot stand in front of a window, a low one can", () => {
+  const objs = windowRoom(obj(4, "wardrobe", 0, 0, 120, 60, { height: 200 }), obj(5, "desk", 0, 0, 120, 60, { height: 75 }));
+  const P = E.rearrangeProblem(objs[0], objs);
+  const away = { ax: 5, ay: 235, rot: 0 };
+  assert.ok(E.scoreLayout(P, [{ ax: 100, ay: 5, rot: 0 }, away]).bad > 0, "wardrobe under the window");
+  assert.equal(E.scoreLayout(P, [away, { ax: 100, ay: 5, rot: 0 }]).bad, 0, "desk under the window");
+});
+
+test("search keeps a wardrobe away from the window", () => {
+  const objs = windowRoom(obj(4, "wardrobe", 100, 5, 120, 60, { height: 200, clear: { ...NO, S: 60 } }),
+    obj(5, "desk", 5, 235, 120, 60, { height: 75, clear: { ...NO, N: 50 } }));
+  const P = E.rearrangeProblem(objs[0], objs);
+  const results = E.searchLayouts(P, { restarts: 4, iters: 800, seed: 3 });
+  assert.ok(results.length >= 1, "no valid layout found");
+  const zone = { x: 100, y: -30, w: 120, h: 60 };
+  for (const res of results) {
+    const b = E.aabb(E.placedObject(P.movers[0], res.placement[0]));
+    assert.ok(!overlap(b, zone), `wardrobe at the window: ${JSON.stringify(b)}`);
+  }
+});
+
+test("a shelf can hang above a desk but not above a wardrobe", () => {
+  const shelf = obj(5, "bookshelf", 0, 0, 120, 30, { z: 120, height: 40 });
+  const onDesk = windowRoom(obj(4, "desk", 5, 235, 120, 60, { height: 75, lock: true }), shelf);
+  const P1 = E.rearrangeProblem(onDesk[0], onDesk);
+  assert.equal(E.scoreLayout(P1, [{ ax: 5, ay: 265, rot: 0 }]).bad, 0);
+  const onWardrobe = windowRoom(obj(4, "wardrobe", 5, 235, 120, 60, { height: 200, lock: true }), { ...shelf });
+  const P2 = E.rearrangeProblem(onWardrobe[0], onWardrobe);
+  assert.ok(E.scoreLayout(P2, [{ ax: 5, ay: 265, rot: 0 }]).bad > 0);
+  // the same works when both pieces move
+  const both = windowRoom(obj(4, "desk", 0, 0, 120, 60, { height: 75 }), { ...shelf });
+  const P3 = E.rearrangeProblem(both[0], both);
+  assert.equal(E.scoreLayout(P3, [{ ax: 5, ay: 235, rot: 0 }, { ax: 5, ay: 265, rot: 0 }]).bad, 0);
+});
+
+test("a hung shelf leaves the floor open", () => {
+  const at = { ax: 150, ay: 265, rot: 0 };
+  const hung = windowRoom(obj(4, "bookshelf", 0, 0, 120, 30, { z: 120, height: 40 }));
+  const standing = windowRoom(obj(4, "bookshelf", 0, 0, 120, 30, { height: 160 }));
+  const open = (objs) => E.scoreLayout(E.rearrangeProblem(objs[0], objs), [at]).open;
+  assert.ok(open(hung) > open(standing), `${open(hung)} <= ${open(standing)}`);
+});
+
 function aabbOf(o) { return E.aabb(o); }
 function fmt(r) { return `score ${r.score.toFixed(3)} reach ${r.reach.toFixed(2)} open ${r.open.toFixed(2)} gap ${r.gap.toFixed(2)} bad ${r.bad}`; }

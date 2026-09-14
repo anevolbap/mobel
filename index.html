@@ -1197,12 +1197,16 @@ window.addEventListener("keydown", (e) => {
 //   reach: how much of each piece's clearance a person coming in the door can get to
 //   open:  share of the floor at least OPEN_R from anything
 //   gap:   how far a piece's back is from a wall or another piece
-//   bad:   grid cells where a piece overlaps, leaves the room or blocks a door
+//   bad:   grid cells where a piece overlaps, leaves the room, blocks a door or
+//          stands in front of a window higher than its sill
+// A piece with z > 0 hangs: it leaves the floor free and only clashes with
+// things that share its height, so a shelf can hang above a desk.
 const RA = {
   CELL: 5,          // cm per grid cell
   PERSON_R: 30,     // half a walking person: passages under 60 cm do not count
   OPEN_R: 50,
   GAP_CAP: 100,     // a back further than this from anything scores the same
+  WINDOW_DEPTH: 30, // cm on each side of a window's centreline kept below its sill
   W_REACH: 1, W_OPEN: 0.5, W_GAP: 0.3, W_BAD: 20,
   T0: 0.05, T1: 0.0005,
 };
@@ -1218,6 +1222,16 @@ function backSides(o) {
   return SIDE_KEYS.filter((s) => !c.includes(s));
 }
 function raDims(o, rot) { return rot % 180 ? [o.h, o.w] : [o.w, o.h]; }
+function hangs(o) { return (o.z || 0) > 0; }
+// True when two objects share some height.
+function sameHeight(a, b) {
+  const a0 = a.z || 0, b0 = b.z || 0;
+  return a0 < b0 + (b.height || 0) && b0 < a0 + (a.height || 0);
+}
+function overlapCells(a, b) {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? Math.ceil((w * h) / (RA.CELL * RA.CELL) - 1e-6) : 0;
+}
 // A placement is the world box's top-left plus a rotation in 90° steps.
 function placedObject(o, p) {
   const [aw, ah] = raDims(o, p.rot);
@@ -1250,7 +1264,9 @@ function rearrangeProblem(room, objects) {
   const I = { x: room.x + t / 2, y: room.y + t / 2, w: room.w - t, h: room.h - t };
   const nx = Math.max(1, Math.floor(I.w / C)), ny = Math.max(1, Math.floor(I.h / C));
   const W = nx + 2, H = ny + 2;                       // a ring of blocked cells around the floor
-  const P = { I, nx, ny, W, H, base: new Uint8Array(W * H), door: new Uint8Array(W * H), hasDoor: false, movers: [], fixed: [] };
+  // solids: fixed things checked box by box with their heights; `floor` ones are also in `base`
+  const P = { I, nx, ny, W, H, base: new Uint8Array(W * H), door: new Uint8Array(W * H), hasDoor: false, doorTop: 0,
+    movers: [], fixed: [], solids: [] };
   for (let i = 0; i < W; i++) P.base[i] = P.base[(H - 1) * W + i] = 1;
   for (let j = 0; j < H; j++) P.base[j * W] = P.base[j * W + W - 1] = 1;
   const near = { x: room.x - t / 2 - 20, y: room.y - t / 2 - 20, w: room.w + t + 40, h: room.h + t + 40 };
@@ -1263,13 +1279,24 @@ function rearrangeProblem(room, objects) {
         ? { x: b.x, y: b.y + b.h / 2 - L, w: b.w, h: 2 * L }
         : { x: b.x + b.w / 2 - L, y: b.y, w: 2 * L, h: b.h });
       P.hasDoor = true;
+      P.doorTop = Math.max(P.doorTop, (o.z || 0) + (o.height || 0));
+      continue;
+    }
+    if ((o.type === "window" || o.type === "tallwindow") && rectsOverlap(b, near)) {   // keep it clear up to the glass
+      const D = RA.WINDOW_DEPTH;
+      const zone = b.w >= b.h ? { x: b.x, y: b.y + b.h / 2 - D, w: b.w, h: 2 * D } : { x: b.x + b.w / 2 - D, y: b.y, w: 2 * D, h: b.h };
+      P.solids.push({ ...zone, z: o.z || 0, height: o.height || 0, floor: false });
       continue;
     }
     const piece = !!TYPES[o.type].piece;
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const block = () => {
+      P.solids.push({ ...b, z: o.z || 0, height: o.height || 0, floor: !hangs(o) });
+      if (!hangs(o)) fillCells(P, P.base, b);
+    };
     if (piece && cx > I.x && cx < I.x + I.w && cy > I.y && cy < I.y + I.h) {
-      if (o.lock) { P.fixed.push(o); fillCells(P, P.base, b); } else P.movers.push(o);
-    } else if ((piece || o.type === "wall") && rectsOverlap(b, I)) fillCells(P, P.base, b);
+      if (o.lock) { P.fixed.push(o); block(); } else P.movers.push(o);
+    } else if ((piece || o.type === "wall") && rectsOverlap(b, I)) block();
   }
   return P;
 }
@@ -1304,13 +1331,24 @@ function scoreLayout(P, pl) {
     bad += Math.round((b.w * b.h - ow * oh) / (C * C));   // outside the room
     const c = cellRange(P, b);
     if (!c) continue;
+    const up = hangs(o), belowDoor = (o.z || 0) < P.doorTop;
     for (let j = c[2]; j <= c[3]; j++) for (let i = c[0]; i <= c[1]; i++) {
       const k = j * W + i;
+      if (up) { if (door[k] && belowDoor) bad++; continue; }
       if (occ[k]) bad++;
       if (door[k]) bad++;
       occ[k] = 1;
     }
   }
+  // clashes the floor grid cannot see: hanging pieces and windows
+  placed.forEach((o, m) => {
+    const b = aabb(o), up = hangs(o);
+    for (const s of P.solids) if ((up || !s.floor) && sameHeight(o, s)) bad += overlapCells(b, s);
+    for (let q = m + 1; q < placed.length; q++) {
+      const p = placed[q];
+      if ((up || hangs(p)) && sameHeight(o, p)) bad += overlapCells(b, aabb(p));
+    }
+  });
   // distance from every free cell to the nearest obstacle or wall
   const d = new Int32Array(n);
   for (let k = 0; k < n; k++) d[k] = occ[k] ? 0 : RA_FAR;

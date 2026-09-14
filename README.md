@@ -144,16 +144,19 @@ on it. Reach is the share of every piece's clearance that a 60 cm wide person
 coming in the door can get to. Open is the share of floor at least 50 cm from
 anything. Back gap is how far a piece's back side stands from a wall or another
 piece (the back is the side opposite its clearance). Overlaps, pieces outside
-the room and pieces in a door's swing are penalised, and layouts with any of
-them are never shown. Simulated annealing runs 8 times, the first from the
+the room, pieces in a door's swing and pieces in front of a window higher than
+its sill are penalised, and layouts with any of them are never shown. In front
+of a window means within 30 cm of its centreline. A piece with **Above floor**
+over 0 hangs: it leaves the floor open and only clashes with things at the same
+height, so a shelf at 120 cm can hang above a 75 cm desk but not above a
+wardrobe. Simulated annealing runs 8 times, the first from the
 current layout and the rest from random wall positions, with moves that push a piece
 against a wall, shift it, turn it or swap two pieces. Weights are in `RA`.
 Known limits of Rearrange:
 
 - Only rooms at rotation 0 are supported, and pieces snap to 90° turns.
-- Windows are ignored, so a tall piece can land in front of one.
-- A locked piece still blocks the floor. A shelf hung on the wall above a desk
-  counts as floor furniture.
+- A hanging piece still gets pushed against a wall like a floor piece, and the
+  person walking in is not checked against its height.
 - A piece belongs to the room that holds its centre.
 - Search time grows with floor area: about 1 s for a 3 × 3 m room and 5 s for
   6 × 4.5 m (measured in Node).
