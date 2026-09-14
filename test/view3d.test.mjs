@@ -24,7 +24,7 @@ const src = [
   ...["aabb", "rotatePoint", "rotRectAabb"].map(fn),
   section(main, "/* ---------- room walls", "/* ---------- view helpers"),
   section(view, "/* ---------- 3d: scene", "/* ---------- 3d: drawing"),
-  ";({ sceneBoxes })",
+  ";({ sceneBoxes, walkBlocked, walkStep })",
 ].join("\n");
 const E = vm.runInThisContext(`(() => {\n${src}\n})()`.replace(";({", "return ({"));
 
@@ -75,6 +75,28 @@ test("furniture stands at its height and a room has a floor", () => {
   const shelf = boxes.find((b) => b.kind === "piece" && b.w === 80);
   assert.deepEqual([shelf.y0, shelf.y1], [120, 160]);
   assert.equal(boxes.filter((b) => b.kind === "floor").length, 1);
+});
+
+test("walking: blocked by walls, windows and furniture, free through a door", () => {
+  const boxes = E.sceneBoxes(room());
+  assert.equal(E.walkBlocked(boxes, 150, 150), false, "middle of the room");
+  assert.equal(E.walkBlocked(boxes, 50, 295), true, "in the south wall");
+  assert.equal(E.walkBlocked(boxes, 140, 300), false, "in the door gap");
+  assert.equal(E.walkBlocked(boxes, 260, 0), true, "in the window gap");
+  assert.equal(E.walkBlocked(boxes, 235, 200), true, "15 cm from the bed");
+  assert.equal(E.walkBlocked(boxes, 225, 200), false, "25 cm from the bed");
+});
+
+test("walking: under a high shelf, not under a low one", () => {
+  const shelf = (z) => E.sceneBoxes([...room(), obj(5, "bookshelf", 20, 20, 80, 30, { z, height: 30 })]);
+  assert.equal(E.walkBlocked(shelf(190), 60, 60), false);
+  assert.equal(E.walkBlocked(shelf(120), 60, 60), true);
+});
+
+test("walking into a wall slides along it, and a stuck person can walk out", () => {
+  const boxes = E.sceneBoxes(room());
+  assert.deepEqual(E.walkStep(boxes, 40, 150, -15, 10), { x: 40, y: 160 });
+  assert.deepEqual(E.walkStep(boxes, 320, 195, 5, 0), { x: 325, y: 195 });   // inside the bed
 });
 
 test("a turned room cuts its walls where the door is", () => {

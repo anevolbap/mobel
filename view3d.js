@@ -70,12 +70,35 @@ function sceneBoxes(objects) {
   return out;
 }
 
+// Walking: a person is a circle in plan. Only things between the knees and the
+// top of the head block, so a rug, a door lintel and a high shelf let you pass.
+const WALK = { EYE: 160, RADIUS: 20, KNEE: 30, HEAD: 180, SPEED: 140, RUN: 320 };
+function walkBlocked(boxes, x, y) {
+  for (const b of boxes) {
+    if (b.y1 <= WALK.KNEE || b.y0 >= WALK.HEAD) continue;
+    const p = rotatePoint(x, y, b.cx, b.cy, -b.rot);
+    const dx = Math.max(Math.abs(p.x - b.cx) - b.w / 2, 0), dy = Math.max(Math.abs(p.y - b.cy) - b.d / 2, 0);
+    if (dx * dx + dy * dy < WALK.RADIUS * WALK.RADIUS) return true;
+  }
+  return false;
+}
+// One step, sliding along whatever is in the way. Someone who already stands
+// inside something (they started there) can walk out.
+function walkStep(boxes, x, y, dx, dy) {
+  if (walkBlocked(boxes, x, y) || !walkBlocked(boxes, x + dx, y + dy)) return { x: x + dx, y: y + dy };
+  if (!walkBlocked(boxes, x + dx, y)) return { x: x + dx, y };
+  if (!walkBlocked(boxes, x, y + dy)) return { x, y: y + dy };
+  return { x, y };
+}
+
 /* ---------- 3d: drawing ---------- */
 const v3 = {
   gl: null, prog: null, buf: null, opaque: 0, glass: 0,
   yaw: 0, pitch: 0.95, dist: 1000, tx: 0, ty: 0,   // orbit camera: radians, cm; target in plan
+  boxes: [], eye: { x: 0, y: 0 }, look: 0,          // walk: where you stand in plan, and how far up you look
+  keys: new Set(), last: 0, moved: false, unlockedAt: 0,
 };
-const canvas3d = $("canvas3d"), hint3d = $("hint3d"), btn3d = $("btn-3d");
+const canvas3d = $("canvas3d"), hint3d = $("hint3d"), btn3d = $("btn-3d"), btnWalk = $("btn-walk");
 
 function perspective(fovy, aspect, near, far) {
   const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
@@ -163,7 +186,12 @@ function upload3d(boxes) {
   v3.opaque = opaque;
   v3.glass = data.length / 9 - opaque;
 }
+// Both cameras face (-sin yaw, -cos yaw) in plan, so walking starts the way the orbit looked.
 function camera3d() {
+  if (state.mode3d === "walk") {
+    const eye = [v3.eye.x, WALK.EYE, v3.eye.y], cl = Math.cos(v3.look);
+    return { eye, target: [eye[0] - Math.sin(v3.yaw) * cl, eye[1] + Math.sin(v3.look), eye[2] - Math.cos(v3.yaw) * cl], near: 5 };
+  }
   const cp = Math.cos(v3.pitch);
   const eye = [v3.tx + v3.dist * cp * Math.sin(v3.yaw), 60 + v3.dist * Math.sin(v3.pitch), v3.ty + v3.dist * cp * Math.cos(v3.yaw)];
   return { eye, target: [v3.tx, 60, v3.ty], near: 5 };
@@ -203,7 +231,8 @@ function drawFrame() {
 }
 // Called from render() in index.html whenever the layout or the window changes.
 function draw3d() {
-  upload3d(sceneBoxes(state.objects));
+  v3.boxes = sceneBoxes(state.objects);
+  upload3d(v3.boxes);
   drawFrame();
 }
 
@@ -215,21 +244,86 @@ function fit3d() {
   v3.ty = (b.minY + b.maxY) / 2;
   v3.dist = Math.max(b.maxX - b.minX, b.maxY - b.minY) * 1.1 + 300;
 }
+const locked = () => document.pointerLockElement === canvas3d;
+function hint3dText() {
+  if (state.mode3d === "orbit") return "Drag to turn · Shift+drag to pan · scroll to zoom · Walk to go inside";
+  return locked() ? "WASD or arrows to walk · Shift to run · mouse to look · Esc frees the mouse"
+    : "Click to look with the mouse (or drag) · WASD or arrows to walk · Esc or Walk to stop";
+}
 function set3d(mode) {
   if (mode && !v3.gl && !init3d()) { alert("This browser cannot draw the 3D view (no WebGL)."); return; }
   if (mode && !state.mode3d) { fit3d(); v3.yaw = 0; v3.pitch = 0.95; }
+  const was = state.mode3d;
+  if (mode === "walk" && was !== "walk") {        // stand where the orbit camera looked
+    v3.eye = { x: v3.tx, y: v3.ty };
+    v3.look = 0;
+    v3.last = 0;
+    requestAnimationFrame(walkFrame);
+    if (canvas3d.requestPointerLock) canvas3d.requestPointerLock();
+  }
+  if (was === "walk" && mode !== "walk") {
+    v3.tx = v3.eye.x; v3.ty = v3.eye.y;
+    v3.keys.clear();
+    if (locked()) document.exitPointerLock();
+  }
   state.mode3d = mode;
-  canvas3d.hidden = hint3d.hidden = !mode;
+  canvas3d.hidden = hint3d.hidden = btnWalk.hidden = !mode;
   btn3d.classList.toggle("active", !!mode);
-  hint3d.textContent = "Drag to turn · Shift+drag to pan · scroll to zoom";
+  btnWalk.classList.toggle("active", mode === "walk");
+  hint3d.textContent = hint3dText();
   onChange();
 }
 btn3d.innerHTML = icon("cube") + "<span>3D</span>";
 btn3d.title = "Show the layout in 3D";
 btn3d.addEventListener("click", () => set3d(state.mode3d ? null : "orbit"));
+btnWalk.innerHTML = icon("walk") + "<span>Walk</span>";
+btnWalk.title = "Walk through the layout at eye height";
+btnWalk.addEventListener("click", () => set3d(state.mode3d === "walk" ? "orbit" : "walk"));
+
+function walkFrame(t) {
+  if (state.mode3d !== "walk") return;
+  const dt = v3.last ? Math.min(0.05, (t - v3.last) / 1000) : 0;
+  v3.last = t;
+  const on = (...codes) => (codes.some((c) => v3.keys.has(c)) ? 1 : 0);
+  const f = on("KeyW", "ArrowUp") - on("KeyS", "ArrowDown"), s = on("KeyD", "ArrowRight") - on("KeyA", "ArrowLeft");
+  if ((f || s) && dt) {
+    const step = ((on("ShiftLeft", "ShiftRight") ? WALK.RUN : WALK.SPEED) * dt) / Math.hypot(f, s);
+    const c = Math.cos(v3.yaw), n = Math.sin(v3.yaw);   // forward is (-n, -c), right is (c, -n)
+    v3.eye = walkStep(v3.boxes, v3.eye.x, v3.eye.y, (-f * n + s * c) * step, (-f * c - s * n) * step);
+    v3.moved = true;
+  }
+  if (v3.moved) { drawFrame(); v3.moved = false; }
+  requestAnimationFrame(walkFrame);
+}
+function lookBy(dx, dy) {
+  v3.yaw -= dx * 0.0025;
+  v3.look = Math.max(-1.4, Math.min(1.4, v3.look - dy * 0.0025));
+  v3.moved = true;
+}
+document.addEventListener("pointerlockchange", () => {
+  if (!locked()) v3.unlockedAt = performance.now();
+  if (state.mode3d) hint3d.textContent = hint3dText();
+});
+document.addEventListener("mousemove", (e) => { if (state.mode3d === "walk" && locked()) lookBy(e.movementX, e.movementY); });
+// Capture phase: while walking, these keys move you and never reach the plan's shortcuts.
+const WALK_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight"]);
+window.addEventListener("keydown", (e) => {
+  if (state.mode3d !== "walk" || typingInField() || e.ctrlKey || e.metaKey) return;
+  if (e.key === "Escape") {   // the first Esc frees the mouse; the browser handles that one
+    if (!locked() && performance.now() - v3.unlockedAt > 300) { e.stopImmediatePropagation(); set3d("orbit"); }
+    return;
+  }
+  if (!WALK_KEYS.has(e.code)) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  v3.keys.add(e.code);
+}, true);
+window.addEventListener("keyup", (e) => { v3.keys.delete(e.code); }, true);
+window.addEventListener("blur", () => v3.keys.clear());
 
 let drag3d = null;
 canvas3d.addEventListener("pointerdown", (e) => {
+  if (state.mode3d === "walk" && !locked() && canvas3d.requestPointerLock) canvas3d.requestPointerLock();
   drag3d = { x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 2 };
   canvas3d.setPointerCapture(e.pointerId);
 });
@@ -237,6 +331,10 @@ canvas3d.addEventListener("pointermove", (e) => {
   if (!drag3d) return;
   const dx = e.clientX - drag3d.x, dy = e.clientY - drag3d.y;
   drag3d.x = e.clientX; drag3d.y = e.clientY;
+  if (state.mode3d === "walk") {   // no pointer lock: drag to look
+    if (!locked()) { lookBy(-dx * 2, -dy * 2); }
+    return;
+  }
   if (drag3d.pan) {   // move the target in plan, along the screen's right and up
     const k = v3.dist / Math.max(1, canvas3d.clientHeight);
     const c = Math.cos(v3.yaw), s = Math.sin(v3.yaw);
@@ -253,6 +351,7 @@ canvas3d.addEventListener("pointercancel", () => { drag3d = null; });
 canvas3d.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas3d.addEventListener("wheel", (e) => {
   e.preventDefault();
+  if (state.mode3d !== "orbit") return;
   v3.dist = Math.max(50, Math.min(20000, v3.dist * Math.exp(e.deltaY * 0.0015)));
   drawFrame();
 }, { passive: false });
