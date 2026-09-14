@@ -54,6 +54,8 @@ loads. The drawing and the pointer interaction have no automated tests.
   object to move it, drag empty space to pan. Pinch with two fingers to zoom,
   and move both fingers to pan. The second finger cancels what the first one
   started, so a pinch that begins on an object leaves it where it was.
+  Handles and buttons are bigger there, and a finger grabs a wall, door or
+  window even a little outside its edge.
 - **Shift+click** adds to the selection, **Shift+drag** on empty space draws a
   selection box. Dragging one selected object moves the whole group. Resize and
   rotate handles appear only when a single object is selected.
