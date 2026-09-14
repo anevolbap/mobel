@@ -1,34 +1,17 @@
 // Run: node --test test/*.test.mjs
-// Loads the rearrange engine out of index.html (no DOM needed) and checks its results
-// with plain box math, not with the engine's own score.
+// Loads core.js and rearrange.js the way the page does (plain scripts sharing one
+// global scope) and checks the engine's results with plain box math, not with its own score.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const script = html.slice(html.indexOf("<script>") + 8, html.indexOf("</script>"));
-function section(start, end) {
-  const a = script.indexOf(start);
-  assert.ok(a >= 0, `missing section ${start}`);
-  return script.slice(a, script.indexOf(end, a + start.length));
-}
-function fn(name) {
-  const a = script.indexOf(`\nfunction ${name}(`);
-  assert.ok(a >= 0, `missing function ${name}`);
-  const eol = script.indexOf("\n", a + 1);
-  if (script.slice(a, eol).trimEnd().endsWith("}")) return script.slice(a, eol + 1);   // one-liner
-  return script.slice(a, script.indexOf("\n}\n", a) + 3);
-}
-const src = [
-  section("/* ---------- type registry", "/* ---------- inline-SVG icons"),
-  ...["aabb", "rectsOverlap", "rotatePoint", "rotRectAabb", "clearDepth", "clearanceRects", "clearanceWorld",
-    "isType", "num", "sanitizeClear", "sanitize"].map(fn),
-  section("/* ---------- rearrange: search", "/* ---------- properties sidebar"),
-  ";({ RA, rearrangeProblem, scoreLayout, searchLayouts, currentPlacement, placedObject, aabb, clearanceWorld, sanitize })",
-].join("\n");
 // This context, not a new one: a separate realm makes every global lookup slow.
-const E = vm.runInThisContext(`(() => {\n${src}\n})()`.replace(";({", "return ({"));
+for (const file of ["core.js", "rearrange.js"]) {
+  const url = new URL(`../${file}`, import.meta.url);
+  vm.runInThisContext(readFileSync(url, "utf8"), { filename: url.pathname });
+}
+const E = vm.runInThisContext("({ RA, rearrangeProblem, scoreLayout, searchLayouts, currentPlacement, placedObject, aabb, clearanceWorld, sanitize })");
 
 const NO = { N: 0, E: 0, S: 0, W: 0 };
 function obj(id, type, x, y, w, h, extra = {}) {

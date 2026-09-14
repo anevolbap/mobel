@@ -1,28 +1,20 @@
 // Run: node --test test/*.test.mjs
-// Loads the 3D scene code out of view3d.js, with the helpers it needs from index.html,
+// Loads core.js the way the page does, cuts the 3D scene code out of view3d.js,
 // and checks the boxes it builds with plain numbers.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const main = html.slice(html.indexOf("<script>") + 8, html.indexOf("</script>"));
+const coreUrl = new URL("../core.js", import.meta.url);
+vm.runInThisContext(readFileSync(coreUrl, "utf8"), { filename: coreUrl.pathname });
 const view = readFileSync(new URL("../view3d.js", import.meta.url), "utf8");
 function section(script, start, end) {
   const a = script.indexOf(start);
   assert.ok(a >= 0, `missing section ${start}`);
   return script.slice(a, script.indexOf(end, a + start.length));
 }
-function fn(name) {
-  const a = main.indexOf(`\nfunction ${name}(`);
-  assert.ok(a >= 0, `missing function ${name}`);
-  return main.slice(a, main.indexOf("\n}\n", a) + 3);
-}
 const src = [
-  section(main, "/* ---------- type registry", "/* ---------- inline-SVG icons"),
-  ...["aabb", "rotatePoint", "rotRectAabb"].map(fn),
-  section(main, "/* ---------- room walls", "/* ---------- view helpers"),
   section(view, "/* ---------- 3d: scene", "/* ---------- 3d: drawing"),
   ";({ sceneBoxes, walkBlocked, walkStep })",
 ].join("\n");

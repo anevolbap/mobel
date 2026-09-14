@@ -10,9 +10,18 @@ no server. Layouts are plain `.json` files you own.
 
 Open `index.html` in a browser (double-click, or `firefox index.html`). That's it.
 
-The app is `index.html` with inline CSS and one classic `<script>`, plus
-`view3d.js` for the 3D view, loaded as a second classic script. Both run
-straight from `file://`.
+The app is four files that must stay in the same folder:
+
+- `index.html`: the page, its CSS, the app state and the plan UI code.
+- `core.js`: object types, geometry and file loading.
+- `rearrange.js`: the Rearrange engine.
+- `view3d.js`: the 3D view.
+
+They are plain `<script src>` files that share one global scope, not ES
+modules, so the app still runs straight from `file://` (tested in Firefox).
+`core.js` and `rearrange.js` load before the inline script in `index.html`,
+`view3d.js` after it. `core.js` and `rearrange.js` have no DOM code and never
+touch the app state.
 
 ## Test
 
@@ -20,9 +29,9 @@ straight from `file://`.
 node --test test/*.test.mjs
 ```
 
-Needs Node 18 or newer (tested on 24) and nothing else. The Rearrange engine,
-the file loader and the 3D scene builder have no DOM code, so the tests cut them
-out of `index.html` and `view3d.js` and check their results with their own box
+Needs Node 18 or newer (tested on 24) and nothing else. The tests load `core.js`
+and `rearrange.js` the same way the page does, cut the 3D scene builder (which
+has no DOM code) out of `view3d.js`, and check the results with their own box
 math. The drawing and the pointer interaction have no automated tests.
 
 ## Use
