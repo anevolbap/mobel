@@ -44,7 +44,7 @@ function room(rot = 0) {
 // Height ranges of the boxes of one kind whose centre lies in a plan rect, sorted.
 function spans(boxes, kind, r) {
   return boxes.filter((b) => b.kind === kind && b.cx > r.x && b.cx < r.x + r.w && b.cy > r.y && b.cy < r.y + r.h)
-    .map((b) => [b.y0, b.y1]).sort((p, q) => p[0] - q[0]);
+    .map((b) => [b.y0, b.y1]).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
 }
 
 test("a door leaves only the wall above it", () => {
@@ -54,11 +54,32 @@ test("a door leaves only the wall above it", () => {
   assert.deepEqual(spans(boxes, "glass", { x: 100, y: 280, w: 80, h: 40 }), []);
 });
 
-test("a window leaves the wall below and above it, with glass between", () => {
+test("a window leaves the wall below and above it, with a frame and glass between", () => {
   const boxes = E.sceneBoxes(room());
   const at = { x: 200, y: -20, w: 120, h: 40 };
   assert.deepEqual(spans(boxes, "wall", at), [[0, 90], [210, 250]]);
-  assert.deepEqual(spans(boxes, "glass", at), [[90, 210]]);
+  assert.deepEqual(spans(boxes, "glass", at), [[95, 205]]);
+  // two jambs over the full height, the sill and the head
+  assert.deepEqual(spans(boxes, "frame", at), [[90, 95], [90, 210], [90, 210], [205, 210]]);
+});
+
+test("a door has a frame and a leaf standing open on its swing side", () => {
+  const boxes = E.sceneBoxes(room());
+  assert.deepEqual(spans(boxes, "frame", { x: 95, y: 280, w: 90, h: 40 }), [[0, 210], [0, 210], [205, 210]]);
+  // flip 0: hinge on the left, the leaf stands north of the door, into the room, 70 cm long
+  const leaf = boxes.find((b) => b.kind === "frame" && b.d === 70);
+  assert.deepEqual([leaf.cx, leaf.cy, leaf.w, leaf.y1], [107, 255, 4, 205]);
+});
+
+test("a room with no wall thickness still gets thin walls in 3D, outside its outline, cut by its door", () => {
+  const objs = room();
+  objs[0] = { ...objs[0], wall: 0 };
+  const boxes = E.sceneBoxes(objs);
+  const west = boxes.filter((b) => b.kind === "wall" && b.cx < 0);
+  assert.deepEqual(west.map((b) => [b.cx, b.w]), [[-5, 10]]);
+  assert.deepEqual(spans(boxes, "wall", { x: 100, y: 280, w: 80, h: 40 }), [[210, 250]]);
+  assert.equal(E.walkBlocked(boxes, 150, 150), false);
+  assert.equal(E.walkBlocked(boxes, 50, 290), true);
 });
 
 test("walls fill the whole band around the openings", () => {

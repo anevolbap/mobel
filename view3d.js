@@ -7,28 +7,27 @@
    ============================================================ */
 
 /* ---------- 3d: scene ---------- */
-const WALL_3D = "#e9e4da", GLASS_3D = "#9cc9e8", GLASS_CM = 2;
+const WALL_3D = "#e9e4da", GLASS_3D = "#7fb3d9", GLASS_CM = 2;
+const FRAME_CM = 5, LEAF_CM = 4;
+const BARE_WALL_CM = 10;   // a room with no wall thickness still shows walls in 3D, this thick
 
 // Doors and windows in an object's own frame, with their heights, so they can cut its walls.
 function openings3d(o, objects) {
   const cx = o.x + o.w / 2, cy = o.y + o.h / 2, rot = o.rot || 0;
   return objects.filter((t) => OPENINGS.has(t.type)).map((t) => ({
-    ...rotRectAabb(aabb(t), cx, cy, -rot), z0: t.z || 0, z1: (t.z || 0) + t.height, glass: t.type !== "door",
+    ...rotRectAabb(aabb(t), cx, cy, -rot), z0: t.z || 0, z1: (t.z || 0) + t.height,
   }));
 }
 // What is left of one wall band: split it along the wall at every opening edge,
-// and each slice keeps the heights no opening covers. A window slice also gets
-// a pane of glass. Rects are in the band's frame, with z0 and z1.
+// and each slice keeps the heights no opening covers. Rects are in the band's
+// frame, with z0 and z1.
 function wallSlices(band, height, openings) {
   const horiz = band.axis === "x";
   const a0 = horiz ? band.x : band.y, a1 = a0 + (horiz ? band.w : band.h);
   const cuts = openings.filter((op) => rectsOverlap(band, op) && op.z1 > op.z0)
-    .map((op) => ({ s0: horiz ? op.x : op.y, s1: horiz ? op.x + op.w : op.y + op.h, z0: op.z0, z1: op.z1, glass: op.glass }));
+    .map((op) => ({ s0: horiz ? op.x : op.y, s1: horiz ? op.x + op.w : op.y + op.h, z0: op.z0, z1: op.z1 }));
   const edges = [...new Set([a0, a1, ...cuts.flatMap((c) => [c.s0, c.s1]).filter((v) => v > a0 && v < a1)])].sort((p, q) => p - q);
   const slice = (s0, s1) => horiz ? { x: s0, y: band.y, w: s1 - s0, h: band.h } : { x: band.x, y: s0, w: band.w, h: s1 - s0 };
-  const pane = (s0, s1) => horiz
-    ? { x: s0, y: band.y + band.h / 2 - GLASS_CM / 2, w: s1 - s0, h: GLASS_CM }
-    : { x: band.x + band.w / 2 - GLASS_CM / 2, y: s0, w: GLASS_CM, h: s1 - s0 };
   const out = [];
   for (let e = 0; e + 1 < edges.length; e++) {
     const s0 = edges[e], s1 = edges[e + 1];
@@ -37,11 +36,39 @@ function wallSlices(band, height, openings) {
     for (const [z0, z1] of subtractIntervals(0, height, here.map((c) => [c.z0, c.z1]))) {
       if (z1 - z0 >= 0.5) out.push({ ...slice(s0, s1), z0, z1 });
     }
-    for (const c of here) {
-      if (c.glass && Math.min(height, c.z1) > c.z0) out.push({ ...pane(s0, s1), z0: c.z0, z1: Math.min(height, c.z1), glass: true });
-    }
   }
   return out;
+}
+// A door or window drawn on its own, so it shows with or without a wall: a frame
+// around the opening, and glass in a window or a leaf in a door. The leaf stands
+// open on the side the plan draws its swing. Rects are in the object's own frame.
+function openingParts(o) {
+  const F = FRAME_CM, z0 = o.z || 0, z1 = z0 + o.height, horiz = o.w >= o.h;
+  const L = horiz ? o.w : o.h, T = horiz ? o.h : o.w;
+  const along = (s0, s1, inset = 0) => horiz
+    ? { x: o.x + s0, y: o.y + inset, w: s1 - s0, h: T - 2 * inset }
+    : { x: o.x + inset, y: o.y + s0, w: T - 2 * inset, h: s1 - s0 };
+  const parts = [
+    { ...along(0, F), z0, z1, kind: "frame" },
+    { ...along(L - F, L), z0, z1, kind: "frame" },
+    { ...along(F, L - F), z0: z1 - F, z1, kind: "frame" },
+  ];
+  if (o.type === "door") {
+    const f = o.flip || 0, D = L - 2 * F;
+    let leaf;
+    if (horiz) {   // the same hinge and side as decorate() in index.html
+      const hx = f & 1 ? o.x + o.w - F - LEAF_CM : o.x + F;
+      leaf = { x: hx, y: f & 2 ? o.y + o.h : o.y - D, w: LEAF_CM, h: D };
+    } else {
+      const hy = f & 1 ? o.y + o.h - F - LEAF_CM : o.y + F;
+      leaf = { x: f & 2 ? o.x + o.w : o.x - D, y: hy, w: D, h: LEAF_CM };
+    }
+    parts.push({ ...leaf, z0, z1: z1 - F, kind: "frame" });
+  } else {
+    parts.push({ ...along(F, L - F), z0, z1: z0 + F, kind: "frame" });
+    parts.push({ ...along(F, L - F, (T - GLASS_CM) / 2), z0: z0 + F, z1: z1 - F, kind: "glass" });
+  }
+  return parts.filter((p) => p.w > 0 && p.h > 0 && p.z1 > p.z0);
 }
 // Everything to draw, as boxes: centre and size in plan (w along the box's own
 // x, d along its own y), turned by rot degrees, from y0 up to y1.
@@ -54,16 +81,19 @@ function sceneBoxes(objects) {
   const walls = (o, bands, color) => {
     const ops = openings3d(o, objects);
     for (const band of bands) {
-      for (const p of wallSlices(band, o.height, ops)) add(o, p, p.z0, p.z1, p.glass ? GLASS_3D : color, p.glass ? "glass" : "wall");
+      for (const p of wallSlices(band, o.height, ops)) add(o, p, p.z0, p.z1, color, "wall");
     }
   };
   for (const o of objects) {
     if (o.type === "room") {
       add(o, o, -2, 0, o.color, "floor");
-      walls(o, roomBands(o), WALL_3D);
+      const t = BARE_WALL_CM;   // bare room: thin walls just outside the outline, so the floor keeps its size
+      walls(o, roomBands(o.wall > 0 ? o : { ...o, x: o.x - t / 2, y: o.y - t / 2, w: o.w + t, h: o.h + t, wall: t }), WALL_3D);
     } else if (o.type === "wall") {
       walls(o, [{ x: o.x, y: o.y, w: o.w, h: o.h, axis: o.w >= o.h ? "x" : "y" }], o.color === DEFAULT_WALL_COLOR ? WALL_3D : o.color);
-    } else if (!OPENINGS.has(o.type)) {
+    } else if (OPENINGS.has(o.type)) {
+      for (const p of openingParts(o)) add(o, p, p.z0, p.z1, p.kind === "glass" ? GLASS_3D : o.color, p.kind);
+    } else {
       add(o, o, o.z || 0, (o.z || 0) + o.height, o.color, "piece");
     }
   }

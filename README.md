@@ -82,7 +82,10 @@ math. The drawing and the pointer interaction have no automated tests.
 - **3D** shows the layout raised to its heights. Drag to turn around it,
   Shift+drag (or right-drag) to pan, scroll to zoom. Doors and windows cut the
   walls at their own heights, so a window leaves wall below its sill and above
-  its top, with a pane of glass between. The sidebar still edits the selected
+  its top. A window has a frame and glass, a door has a frame and its leaf
+  standing open on the side of its swing, and both show even with no wall
+  under them. A room with wall thickness 0 still gets thin 10 cm walls in 3D,
+  just outside its outline, so its floor keeps its size. The sidebar still edits the selected
   object and the 3D view follows. Press **3D** again to go back to the plan.
 - **Walk** (in the 3D view) puts you at eye height (160 cm) where the 3D camera
   was looking, facing the same way. Click the view to look with the mouse, or
