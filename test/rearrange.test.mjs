@@ -1,4 +1,4 @@
-// Run: node --test test/
+// Run: node --test test/*.test.mjs
 // Loads the rearrange engine out of index.html (no DOM needed) and checks its results
 // with plain box math, not with the engine's own score.
 import { test } from "node:test";

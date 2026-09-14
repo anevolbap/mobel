@@ -3,26 +3,27 @@
 Browser-based, to-scale floor-plan editor. Lay out a home in exact centimetres:
 drop in rooms, doors, windows, bookshelves and furniture, then drag, rotate and
 resize them, or let **Rearrange** propose new furniture layouts for a room.
-Vanilla JS + SVG in a single file. No framework, no build, no server.
-Layouts are plain `.json` files you own.
+Vanilla JS, SVG for the plan and WebGL for the 3D view. No framework, no build,
+no server. Layouts are plain `.json` files you own.
 
 ## Run
 
 Open `index.html` in a browser (double-click, or `firefox index.html`). That's it.
 
-The whole app is one self-contained file with inline CSS and a single classic
-`<script>`, so it runs straight from `file://`.
+The app is `index.html` with inline CSS and one classic `<script>`, plus
+`view3d.js` for the 3D view, loaded as a second classic script. Both run
+straight from `file://`.
 
 ## Test
 
 ```bash
-node --test test/rearrange.test.mjs
+node --test test/*.test.mjs
 ```
 
-Needs Node 18 or newer (tested on 24) and nothing else. The Rearrange engine and
-the file loader have no DOM code, so the test cuts them out of `index.html` and
-checks their results with its own box math. The drawing and the pointer
-interaction have no automated tests.
+Needs Node 18 or newer (tested on 24) and nothing else. The Rearrange engine,
+the file loader and the 3D scene builder have no DOM code, so the tests cut them
+out of `index.html` and `view3d.js` and check their results with their own box
+math. The drawing and the pointer interaction have no automated tests.
 
 ## Use
 
@@ -77,6 +78,12 @@ interaction have no automated tests.
   piece to keep it where it is, for example a built-in wardrobe. Doors, windows
   and walls never move. Each run starts from a new random seed, so pressing
   Rearrange again gives other ideas.
+
+- **3D** shows the layout raised to its heights. Drag to turn around it,
+  Shift+drag (or right-drag) to pan, scroll to zoom. Doors and windows cut the
+  walls at their own heights, so a window leaves wall below its sill and above
+  its top, with a pane of glass between. The sidebar still edits the selected
+  object and the 3D view follows. Press **3D** again to go back to the plan.
 
 ### Keyboard
 
@@ -138,6 +145,12 @@ default 15 cm walls, and a version 4 `clear: 80, face: "S"` becomes
 Room walls are four bands in the room's own frame, cut by interval subtraction
 wherever a door or window overlaps them, so an opening is a real gap and not a
 rectangle painted on top.
+
+The 3D view builds a list of boxes from `state.objects` on every change and
+draws it with one small WebGL shader and flat light. Plan x is 3D x, plan y is
+3D z. A wall band is split along its length at every opening edge, and each
+slice keeps the heights that no opening covers. A plain wall is cut the same
+way, so a door in a partition is a real gap in 3D.
 
 Rearrange turns the floor inside the walls into a 5 cm grid and scores a layout
 on it. Reach is the share of every piece's clearance that a 60 cm wide person
