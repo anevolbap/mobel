@@ -1,8 +1,9 @@
 # Möbel
 
 Browser-based, to-scale floor-plan editor. Lay out a home in exact centimetres:
-drop in walls, doors, windows, bookshelves and furniture, then drag, rotate and
-resize them. Vanilla JS + SVG in a single file. No framework, no build, no server.
+drop in rooms, doors, windows, bookshelves and furniture, then drag, rotate and
+resize them, or let **Rearrange** propose new furniture layouts for a room.
+Vanilla JS + SVG in a single file. No framework, no build, no server.
 Layouts are plain `.json` files you own.
 
 ## Run
@@ -11,6 +12,17 @@ Open `index.html` in a browser (double-click, or `firefox index.html`). That's i
 
 The whole app is one self-contained file with inline CSS and a single classic
 `<script>`, so it runs straight from `file://`.
+
+## Test
+
+```bash
+node --test test/rearrange.test.mjs
+```
+
+Needs Node 18 or newer (tested on 24) and nothing else. The Rearrange engine and
+the file loader have no DOM code, so the test cuts them out of `index.html` and
+checks their results with its own box math. The drawing and the pointer
+interaction have no automated tests.
 
 ## Use
 
@@ -68,12 +80,47 @@ The whole app is one self-contained file with inline CSS and a single classic
 - `X` (or `Del`) deletes, `D` (or `C`) duplicates, `Esc` deselects.
 - `Ctrl/⌘+Z` undoes, `Ctrl/⌘+Shift+Z` (or `Ctrl+Y`) redoes, `Ctrl/⌘+A` selects all.
 - `Ctrl/⌘+S` saves a `layout.json`; **File ▾ → Load** restores one.
+- `M` turns the measure tape on and off.
+- While a Rearrange preview is open: `←` / `→` step through the layouts,
+  `Enter` applies, `Esc` cancels. Editing keys do nothing and dragging only
+  pans. `Ctrl/⌘+S` still saves, and it saves the layout being previewed.
+
+## Layout file
+
+A saved layout is JSON:
+
+```json
+{
+  "app": "moebel", "version": 5, "units": "cm",
+  "objects": [
+    { "id": 2, "type": "desk", "label": "Desk", "x": 40, "y": 40, "w": 140, "h": 60,
+      "rot": 0, "color": "#1b6cf0", "flip": 0,
+      "clear": { "N": 0, "E": 0, "S": 80, "W": 0 }, "wall": 0, "lock": false }
+  ]
+}
+```
+
+- `type`: `room`, `wall`, `door`, `window`, `tallwindow`, `bookshelf`,
+  `furniture`, `fridge`, `desk`, `table`, `bed`, `sofa` or `wardrobe`. An
+  unknown type loads as `furniture`.
+- `x`, `y` is the top-left corner and `w`, `h` the size, all in cm, before
+  rotation. `rot` is in degrees, clockwise, around the centre.
+- `clear` is the clearance depth per side in the object's own frame: `N` is the
+  top edge before rotation.
+- `wall` is a room's wall thickness. `flip` (0 to 3) is a door's hinge side.
+- `lock: true` keeps a piece in place during Rearrange.
+- Objects are painted in array order, so the first one is at the back.
+
+On load, a missing or broken field falls back to a safe value: 0 for the
+position, the type's default for size, colour, clearance and wall.
 
 ## Notes
 
 World coordinates are centimetres; all cm→px mapping goes through the single
 `#viewport` transform. State lives in one `state` object and `render()` rebuilds
-the SVG from it. Everything is an axis-aligned rectangle.
+the SVG from it. Every object is a rectangle that can turn around its centre.
+Collision checks use its bounding box, which is exact at 0, 90, 180 and 270
+degrees and too large at other angles.
 
 Undo stores JSON snapshots of `state.objects`, one per finished gesture, capped
 at 50. Paint order is array order, so z-order is a move inside the array. Saved
@@ -94,7 +141,12 @@ the room and pieces in a door's swing are penalised, and layouts with any of
 them are never shown. Simulated annealing runs 8 times, the first from the
 current layout and the rest from random wall positions, with moves that push a piece
 against a wall, shift it, turn it or swap two pieces. Weights are in `RA`.
-Only rooms at rotation 0 are supported, and pieces snap to 90° turns.
+Known limits of Rearrange:
 
-The engine has no DOM code, so `node --test test/rearrange.test.mjs` loads it
-straight out of `index.html` and checks its results.
+- Only rooms at rotation 0 are supported, and pieces snap to 90° turns.
+- Windows are ignored, so a tall piece can land in front of one.
+- A locked piece still blocks the floor. A shelf hung on the wall above a desk
+  counts as floor furniture.
+- A piece belongs to the room that holds its centre.
+- Search time grows with floor area: about 1 s for a 3 × 3 m room and 5 s for
+  6 × 4.5 m (measured in Node).
