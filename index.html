@@ -85,6 +85,7 @@
     }
     .menu-item .ic { color: var(--ink-soft); }
     .menu-item:hover { background: #f1ece2; }
+    .menu-item:focus-visible, .swatch:focus-visible, .toggle input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     #menu-add .menu-pop { left: 0; right: auto; }
 
     /* --- workspace --- */
@@ -1188,7 +1189,7 @@ for (const key of TYPE_KEYS) {
 }
 for (const c of PALETTE) {
   const b = document.createElement("button");
-  b.className = "swatch"; b.style.background = c; b.title = c;
+  b.className = "swatch"; b.style.background = c; b.title = c; b.setAttribute("aria-label", `Color ${c}`);
   b.addEventListener("click", () => { commit("color", c); checkpoint(); });
   fColors.appendChild(b);
 }
