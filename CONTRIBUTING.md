@@ -10,6 +10,14 @@ Run the tests with Node 18 or newer:
 node --test test/*.test.mjs
 ```
 
+CI runs the tests on Node 18 and 24, on every push and pull request. The tests
+load `core.js` and `rearrange.js` the same way the page does, cut the 3D scene
+builder out of `view3d.js` and the sample layout out of `index.html`, and check
+the results with their own box math. The drawing and the pointer interaction
+have no automated tests.
+
+[How it works](docs/internals.md) explains the code.
+
 ## Rules
 
 - One change per pull request. A bug fix and a new feature go in two pull
@@ -21,10 +29,10 @@ node --test test/*.test.mjs
 - If you change `core.js`, `rearrange.js` or the 3D scene code, add or update a
   test.
 - If you change the page, run the
-  [browser check](README.md#browser-check-before-a-release) and say in the pull
+  [browser check](docs/release.md#browser-check) and say in the pull
   request which browsers you tried.
 - If you change the layout file, only add fields. Old files must keep loading
-  (see [Layout file](README.md#layout-file)).
+  (see [Layout file](docs/file-format.md)).
 
 ## License
 
