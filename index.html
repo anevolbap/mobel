@@ -625,8 +625,8 @@ function drawGrid(v = visibleWorld()) {
   const { zoom } = state.view;
   const minor = 50, major = 100;
   const drawMinor = minor * zoom >= 6;
-  const startX = Math.floor(v.left / minor) * minor;
-  const startY = Math.floor(v.top / minor) * minor;
+  const startX = Math.ceil(v.left / minor) * minor;   // no line outside the view: print shows past its edges
+  const startY = Math.ceil(v.top / minor) * minor;
   for (let x = startX; x <= v.right; x += minor) {
     const isMajor = Math.round(x) % major === 0;
     if (!isMajor && !drawMinor) continue;
@@ -638,17 +638,17 @@ function drawGrid(v = visibleWorld()) {
     gridGroup.appendChild(el("line", { x1: v.left, y1: y, x2: v.right, y2: y, class: isMajor ? "grid-major" : "grid-minor", "vector-effect": "non-scaling-stroke" }));
   }
   const fs = RULER_PX / zoom, padX = 4 / zoom, padY = RULER_PX / zoom + 2 / zoom;
-  for (let x = startX; x <= v.right; x += major) {
-    if (major * zoom < 40) break;
-    const t = el("text", { x: x + padX, y: v.top + padY, class: "ruler-label", "font-size": fs });
-    t.textContent = `${(x / 100).toFixed(x % 100 ? 1 : 0)} m`;
+  if (major * zoom < 40) return;
+  // monospace digits are about 0.6 em wide; left-edge labels start below the top row
+  for (const { at, text } of rulerLabels(v.left, v.right, major, padX, 0.6 * fs)) {
+    const t = el("text", { x: at + padX, y: v.top + padY, class: "ruler-label", "font-size": fs });
+    t.textContent = text;
     gridGroup.appendChild(t);
   }
-  for (let y = startY; y <= v.bottom; y += major) {
-    if (major * zoom < 40) break;
-    if (Math.round(y) === 0) continue;
-    const t = el("text", { x: v.left + padX, y: y + padY, class: "ruler-label", "font-size": fs });
-    t.textContent = `${(y / 100).toFixed(y % 100 ? 1 : 0)} m`;
+  for (const { at, text } of rulerLabels(v.top + padY, v.bottom, major, padY, 0)) {
+    if (Math.round(at) === 0) continue;
+    const t = el("text", { x: v.left + padX, y: at + padY, class: "ruler-label", "font-size": fs });
+    t.textContent = text;
     gridGroup.appendChild(t);
   }
 }

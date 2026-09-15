@@ -106,6 +106,17 @@ function scaleBar(zoom) {
   for (const len of SCALE_LENGTHS) if (len * zoom <= 160) cm = len;
   return { cm, label: cm < 100 ? `${cm} cm` : `${cm / 100} m` };
 }
+// Ruler labels for the major grid lines, `step` cm apart, from `lo` to `hi` cm.
+// A label starts `pad` cm past its line and each character takes `charW` cm, so
+// a label that would run past `hi` is left out instead of being cut.
+function rulerLabels(lo, hi, step, pad, charW) {
+  const out = [];
+  for (let at = Math.ceil(lo / step) * step + 0; at <= hi; at += step) {   // + 0 turns -0 into 0
+    const text = `${at / 100} m`;
+    if (at + pad + text.length * charW <= hi) out.push({ at, text });
+  }
+  return out;
+}
 // Clearance bands, in the object's own frame (the group's rotate carries them).
 // One per side with a depth; corners are left open.
 function clearDepth(o, side) { return (o.clear && o.clear[side]) || 0; }
