@@ -1515,12 +1515,14 @@ window.addEventListener("resize", () => render());
 /* ---------- startup: last session if there is one, else the sample ---------- */
 function seed() {
   const place = (type, x, y, extra = {}) => addObject({ ...spawnDefaults(type), x, y, ...extra });
-  place("room", 0, 0, { w: 400, h: 300, label: "Studio" });   // first = painted behind
-  place("door", 150, 294, { w: 80, h: 12, label: "", flip: 0 });
-  place("window", 130, -6, { w: 120, h: 12, label: "" });
-  place("desk", 40, 40, { w: 140, h: 60, label: "Desk" });
-  place("furniture", 95, 120, { w: 45, h: 45, label: "Chair", color: "#16a34a" });
-  place("bookshelf", 296, 30, { w: 92, h: 28, label: "Shelf" });
+  place("room", 0, 0, { w: 400, h: 350, label: "Bedroom" });   // first = painted behind
+  place("door", 50, 344, { w: 80, h: 12, label: "", flip: 0 });
+  place("window", 72, -6, { w: 120, h: 12, label: "" });
+  place("desk", 72, 8, { w: 120, h: 60, label: "Desk" });
+  place("bookshelf", 8, 200, { w: 28, h: 90, label: "Shelf" });
+  place("wardrobe", 262, 8, { label: "Wardrobe" });
+  // the bed stands 62 cm from the wardrobe front, which needs 90 cm: one red band
+  place("bed", 222, 100, { rot: 90, label: "Bed" });
 }
 seed();
 const sampleJson = layoutJson(sanitizeObjects(state.objects));   // a share link replaces the sample without asking

@@ -52,8 +52,8 @@ node --test test/*.test.mjs
 
 Needs Node 18 or newer (tested on 24) and nothing else. The tests load `core.js`
 and `rearrange.js` the same way the page does, cut the 3D scene builder (which
-has no DOM code) out of `view3d.js`, and check the results with their own box
-math. Old layout files in `test/fixtures` check that each file version still
+has no DOM code) out of `view3d.js` and the sample layout out of `index.html`,
+and check the results with their own box math. Old layout files in `test/fixtures` check that each file version still
 loads. The drawing and the pointer interaction have no automated tests.
 
 ## Use
