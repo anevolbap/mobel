@@ -309,10 +309,10 @@ function set3d(mode) {
   hint3d.textContent = hint3dText();
   onChange();
 }
-btn3d.innerHTML = icon("cube") + "<span>3D</span>";
+btn3d.innerHTML = icon("cube");
 btn3d.title = "Show the layout in 3D";
 btn3d.addEventListener("click", () => set3d(state.mode3d ? null : "orbit"));
-btnWalk.innerHTML = icon("walk") + "<span>Walk</span>";
+btnWalk.innerHTML = icon("walk");
 btnWalk.title = "Walk through the layout at eye height";
 btnWalk.addEventListener("click", () => set3d(state.mode3d === "walk" ? "orbit" : "walk"));
 

@@ -87,6 +87,7 @@
     .menu-item:hover { background: #f1ece2; }
     .menu-item:focus-visible, .swatch:focus-visible, .toggle input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     #menu-add .menu-pop { left: 0; right: auto; }
+    .toggle:has(input:checked) .ic { color: var(--accent); }
 
     /* --- workspace --- */
     #workspace { display: grid; grid-template-columns: 1fr 260px; min-height: 0; }
@@ -100,6 +101,9 @@
       background: var(--panel); border: 1px solid var(--border); border-radius: 6px; pointer-events: none;
     }
     #canvas3d[hidden], #hint3d[hidden], .btn[hidden] { display: none; }
+    /* a rearrange preview needs its Apply and Cancel, so it keeps the panel open */
+    #app:not(.previewing) #workspace.panel-off { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+    #app:not(.previewing) #workspace.panel-off #sidebar { display: none; }
 
     .grid-minor { stroke: var(--grid-minor); stroke-width: 1; }
     .grid-major { stroke: var(--grid-major); stroke-width: 1; }
@@ -213,7 +217,7 @@
       <span class="brand">Möbel</span>
       <span class="sep"></span>
       <details class="menu" id="menu-add">
-        <summary class="btn">＋ Add ▾</summary>
+        <summary class="btn" aria-label="Add">＋ Add ▾</summary>
         <div class="menu-pop" id="add-menu-pop"></div>
       </details>
       <span class="sep"></span>
@@ -225,18 +229,19 @@
       <div class="group" role="group" aria-label="Zoom">
         <button id="btn-zoom-out" class="btn" aria-label="Zoom out">−</button>
         <button id="btn-zoom-in" class="btn" aria-label="Zoom in">＋</button>
-        <button id="btn-fit" class="btn">Fit</button>
+        <button id="btn-fit" class="btn" aria-label="Fit all to view">Fit</button>
       </div>
-      <label class="toggle"><input type="checkbox" id="snap-check" checked /> Snap 5&nbsp;cm</label>
+      <label class="toggle" id="snap-toggle" title="Snap to 5 cm"><input type="checkbox" id="snap-check" checked aria-label="Snap to 5 cm" /></label>
       <span class="sep"></span>
-      <button id="btn-measure" class="btn">Measure</button>
+      <button id="btn-measure" class="btn" aria-label="Measure">Measure</button>
       <span class="sep"></span>
-      <button id="btn-3d" class="btn">3D</button>
-      <button id="btn-walk" class="btn" hidden>Walk</button>
+      <button id="btn-3d" class="btn" aria-label="3D view">3D</button>
+      <button id="btn-walk" class="btn" aria-label="Walk" hidden>Walk</button>
       <span class="spacer"></span>
+      <button id="btn-panel" class="btn" aria-label="Properties panel" aria-controls="sidebar" aria-pressed="true">Panel</button>
       <button id="btn-help" class="btn" aria-label="Keys and touch gestures">?</button>
       <details class="menu" id="menu-file">
-        <summary class="btn">File ▾</summary>
+        <summary class="btn" aria-label="File">File ▾</summary>
         <div class="menu-pop">
           <button id="btn-save" class="menu-item">Save layout…</button>
           <button id="btn-load" class="menu-item">Load layout…</button>
@@ -281,7 +286,7 @@
             <li><b>Arrows</b> nudge (Shift = 1 cm) · <b>R</b> rotate 90°</li>
             <li><b>D</b> duplicate · <b>X</b> / <b>Del</b> delete</li>
             <li><b>Ctrl/⌘+Z</b> undo · <b>Ctrl/⌘+S</b> save · <b>Esc</b> deselect</li>
-            <li><b>?</b> lists all keys and touch gestures</li>
+            <li><b>P</b> hides this panel · <b>?</b> lists all keys and touch gestures</li>
           </ul>
         </div>
 
@@ -390,6 +395,7 @@
       <li><b>Ctrl/⌘+Z</b> undo · <b>Ctrl/⌘+Shift+Z</b> or <b>Ctrl+Y</b> redo</li>
       <li><b>Ctrl/⌘+A</b> select all · <b>Ctrl/⌘+S</b> save a layout.json</li>
       <li><b>M</b> measure tape on and off</li>
+      <li><b>P</b> properties panel on and off</li>
       <li><b>Esc</b> clears the tape, then deselects</li>
       <li><b>Shift+click</b> adds to the selection · <b>Shift+drag</b> draws a selection box</li>
       <li><b>Alt</b> while dragging or measuring: no snap</li>
@@ -426,7 +432,6 @@ const PALETTE = ["#1b6cf0","#16a34a","#ea580c","#dc2626","#7c3aed","#0891b2","#c
 const ICONS = {
   logo: '<rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 13h7M10 13v8"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
-  minus: '<path d="M5 12h14"/>',
   chevron: '<path d="M6 9l6 6 6-6"/>',
   fit: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>',
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
@@ -447,6 +452,10 @@ const ICONS = {
   ruler: '<path d="M3 15L15 3l6 6L9 21z"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2"/>',
   cube: '<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',
   walk: '<circle cx="13" cy="4" r="2"/><path d="M10 21l2-6 3 3v3M9 11l3-3 3 3 3 1M12 8l-1 5"/>',
+  zoomin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/>',
+  zoomout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/>',
+  magnet: '<path d="M6 3v8a6 6 0 0 0 12 0V3"/><path d="M6 7h4M14 7h4"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/>',
   // object types (echo the on-canvas symbols)
   wall: '<rect x="3" y="10" width="18" height="4" rx="1" fill="currentColor" stroke="none"/>',
@@ -1157,6 +1166,7 @@ window.addEventListener("keydown", (e) => {
   if (mod && k === "d") { e.preventDefault(); if (many.length) { duplicateSelected(); checkpoint(); onChange(); } return; }
   if (e.key === "Delete" || e.key === "Backspace") { if (many.length) { e.preventDefault(); deleteSelected(); checkpoint(); onChange(); } return; }
   if (k === "m") { e.preventDefault(); setMeasuring(!state.measuring); return; }
+  if (k === "p" && !mod) { e.preventDefault(); setPanel(workspace.classList.contains("panel-off")); return; }
   if (e.key === "Escape") {
     if (state.measure) state.measure = null; else select(null);
     onChange(); return;
@@ -1396,12 +1406,12 @@ for (const key of TYPE_KEYS) {
 }
 
 // Decorate the static controls with icons + accessible labels.
-document.querySelector(".brand").innerHTML = icon("logo") + "<span>Möbel</span>";
-$("menu-add").querySelector("summary").innerHTML = icon("plus") + "<span>Add</span>" + icon("chevron");
-$("menu-file").querySelector("summary").innerHTML = icon("file") + "<span>File</span>" + icon("chevron");
-$("btn-zoom-out").innerHTML = icon("minus"); $("btn-zoom-out").title = "Zoom out";
-$("btn-zoom-in").innerHTML = icon("plus"); $("btn-zoom-in").title = "Zoom in";
-$("btn-fit").innerHTML = icon("fit") + "<span>Fit</span>"; $("btn-fit").title = "Fit all to view";
+document.querySelector(".brand").innerHTML = icon("logo"); document.querySelector(".brand").title = "Möbel";
+$("menu-add").querySelector("summary").innerHTML = icon("plus") + icon("chevron");
+$("menu-file").querySelector("summary").innerHTML = icon("file") + icon("chevron");
+$("btn-zoom-out").innerHTML = icon("zoomout"); $("btn-zoom-out").title = "Zoom out";
+$("btn-zoom-in").innerHTML = icon("zoomin"); $("btn-zoom-in").title = "Zoom in";
+$("btn-fit").innerHTML = icon("fit"); $("btn-fit").title = "Fit all to view";
 $("btn-save").innerHTML = icon("download") + "<span>Save layout</span>";
 $("btn-load").innerHTML = icon("upload") + "<span>Load layout</span>";
 $("btn-export-svg").innerHTML = icon("image") + "<span>Export SVG</span>";
@@ -1436,6 +1446,21 @@ $("act-back").title = $("m-back").title = "Send to back";
 const helpDialog = $("help");
 $("btn-help").innerHTML = icon("help"); $("btn-help").title = "Keys and touch gestures (?)";
 $("btn-help").addEventListener("click", () => helpDialog.showModal());
+// The properties panel can hide, so a phone gets the whole screen for the plan.
+// A phone starts without it; the last choice is kept per browser.
+const workspace = $("workspace"), btnPanel = $("btn-panel"), PANEL_KEY = "mobel-panel";
+btnPanel.innerHTML = icon("panel"); btnPanel.title = "Properties panel (P)";
+function setPanel(on) {
+  workspace.classList.toggle("panel-off", !on);
+  btnPanel.classList.toggle("active", on);
+  btnPanel.setAttribute("aria-pressed", String(on));
+  try { localStorage.setItem(PANEL_KEY, on ? "on" : "off"); } catch (err) { /* private mode */ }
+  window.dispatchEvent(new Event("resize"));   // the plan and the 3D view take the new size
+}
+btnPanel.addEventListener("click", () => setPanel(workspace.classList.contains("panel-off")));
+let panelPref = null;
+try { panelPref = localStorage.getItem(PANEL_KEY); } catch (err) { /* private mode */ }
+setPanel(panelPref ? panelPref === "on" : !matchMedia("(max-width: 640px)").matches);
 $("btn-undo").addEventListener("click", undo);
 $("btn-redo").addEventListener("click", redo);
 $("btn-print").addEventListener("click", () => { fitView(); window.print(); });
@@ -1445,7 +1470,7 @@ window.addEventListener("beforeprint", () => svg.setAttribute("viewBox", `0 0 ${
 window.addEventListener("afterprint", () => svg.removeAttribute("viewBox"));
 
 const btnMeasure = $("btn-measure");
-btnMeasure.innerHTML = icon("ruler") + "<span>Measure</span>";
+btnMeasure.innerHTML = icon("ruler");
 btnMeasure.title = "Measure a distance (M)";
 function setMeasuring(on) {
   state.measuring = on;
@@ -1526,6 +1551,7 @@ $("ra-apply").addEventListener("click", () => finishRearrange(true));
 $("ra-cancel").addEventListener("click", () => finishRearrange(false));
 
 const snapCheck = $("snap-check");
+$("snap-toggle").insertAdjacentHTML("beforeend", icon("magnet"));
 snapCheck.checked = state.snap;
 snapCheck.addEventListener("change", () => { state.snap = snapCheck.checked; });
 
