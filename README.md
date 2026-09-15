@@ -162,6 +162,8 @@ loads. The drawing and the pointer interaction have no automated tests.
 - `Ctrl/⌘+Z` undoes, `Ctrl/⌘+Shift+Z` (or `Ctrl+Y`) redoes, `Ctrl/⌘+A` selects all.
 - `Ctrl/⌘+S` saves a `layout.json`; **File ▾ → Load** restores one.
 - `M` turns the measure tape on and off.
+- `?` (or the **?** button in the toolbar) lists all keys and touch gestures.
+  `Esc` closes the list.
 - While a Rearrange preview is open: `←` / `→` step through the layouts,
   `Enter` applies, `Esc` cancels. Editing keys do nothing and dragging only
   pans. `Ctrl/⌘+S` still saves, and it saves the layout being previewed.

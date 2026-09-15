@@ -344,7 +344,7 @@ document.addEventListener("mousemove", (e) => { if (state.mode3d === "walk" && l
 // Capture phase: while walking, these keys move you and never reach the plan's shortcuts.
 const WALK_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight"]);
 window.addEventListener("keydown", (e) => {
-  if (state.mode3d !== "walk" || typingInField() || e.ctrlKey || e.metaKey) return;
+  if (state.mode3d !== "walk" || typingInField() || $("help").open || e.ctrlKey || e.metaKey) return;
   if (e.key === "Escape") {   // the first Esc frees the mouse; the browser handles that one
     if (!locked() && performance.now() - v3.unlockedAt > 300) { e.stopImmediatePropagation(); set3d("orbit"); }
     return;
