@@ -51,7 +51,7 @@ loads. The drawing and the pointer interaction have no automated tests.
 - Drag empty space to pan; scroll to zoom toward the cursor; **Fit** frames everything.
 - A scale bar in the bottom right corner of the plan shows a round length, from
   10 cm to 10 m, that is 64 to 160 px long at the current zoom. It is printed
-  with the plan and keeps the printed scale.
+  and exported with the plan and keeps their scale.
 - Click to select; drag to move; drag the corner handle to resize; drag the round knob to rotate.
 - On a touch screen one finger works like the mouse: tap to select, drag an
   object to move it, drag empty space to pan. Pinch with two fingers to zoom,
@@ -87,6 +87,14 @@ loads. The drawing and the pointer interaction have no automated tests.
   clear span between two walls gives the exact number. Hold **Alt** to measure
   free. `Esc` clears the tape. Measurements are not part of the layout and are
   never saved.
+- **File ▾** has Save layout, Load layout, Export SVG, Export PNG, Print, Clear
+  all and Reset to sample.
+- **File ▾ → Export SVG** and **Export PNG** save the plan the way print shows
+  it: grid, objects, clearance bands, labels and the scale bar, with no
+  selection, handles or measure tape. The picture frames the whole layout with
+  a margin. `layout.svg` is in centimetres and 1:20 on paper, and carries its
+  own styles, so it opens on its own. `layout.png` has about 2 px per cm, at
+  least 2000 px and at most 8000 px on the long side, on white.
 - Every change is undoable, and the layout is kept in `localStorage`, so a reload
   brings back the last session. **File ▾ → Reset to sample** goes back to the
   demo room. **File ▾ → Print** prints the plan alone, without the interface, with the view
