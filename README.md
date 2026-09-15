@@ -10,12 +10,33 @@ no server. Layouts are plain `.json` files you own.
 
 Open `index.html` in a browser (double-click, or `firefox index.html`). That's it.
 
+The app will live at <https://anevolbap.github.io/mobel/>. From there a browser
+that supports it (for example Chrome, Edge or Safari on iPhone) can install it
+as an app, from the address bar or **Add to Home Screen**. After the
+first visit it also opens with no network. Opened from `file://` the app works
+the same, only without the install and the offline copy, because browsers allow
+service workers only over `http` or `https`.
+
 The app is four files that must stay in the same folder:
 
 - `index.html`: the page, its CSS, the app state and the plan UI code.
 - `core.js`: object types, geometry and file loading.
 - `rearrange.js`: the Rearrange engine.
 - `view3d.js`: the 3D view.
+
+For the installed app there are also `manifest.webmanifest` (name, colours,
+icons), `icon.svg`, `icon-192.png`, `icon-512.png` and `sw.js`, the service
+worker. `sw.js` keeps a copy of all these files in a cache named by its
+`VERSION` constant. It asks the network first and uses the copy only when the
+network fails, so an online visit always gets the files on the server.
+
+### Release
+
+Change `VERSION` in `sw.js` (for example `mobel-1` to `mobel-2`) whenever you
+publish changed files. Browsers see that `sw.js` changed, cache the new files
+under the new name and delete the old cache. Without the change, the offline
+copy keeps the old files. If you add a file the app loads, add it to `FILES` in
+`sw.js` too.
 
 They are plain `<script src>` files that share one global scope, not ES
 modules, so the app still runs straight from `file://` (tested in Firefox).

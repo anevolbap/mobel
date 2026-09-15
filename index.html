@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Möbel</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#fbf8f2" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
   <style>
     /* Drafting / technical aesthetic: warm paper canvas, cool grid,
        monospace for measurements, one accent for selection + primary action. */
@@ -1526,6 +1529,10 @@ mark = snapshot();   // the starting layout is the undo baseline
 updateStatus();
 openShareLink();
 window.addEventListener("hashchange", openShareLink);
+// The offline copy (sw.js). Service workers need http or https, so not from file://.
+if ((location.protocol === "http:" || location.protocol === "https:") && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+}
 </script>
 <script src="view3d.js"></script>
 </body>
