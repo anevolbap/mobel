@@ -6,6 +6,24 @@ resize them, or let **Rearrange** propose new furniture layouts for a room.
 Vanilla JS, SVG for the plan and WebGL for the 3D view. No framework, no build,
 no server. Layouts are plain `.json` files you own.
 
+Möbel is for planning whether your furniture fits and the room still works.
+Each piece can show the free space it needs in front or at its sides
+(clearance), and that space turns red when something stands in it. **Measure**
+checks the walking space between pieces, and **Rearrange** looks for layouts
+where nothing is in the way. On the first visit Möbel shows a sample room with
+one red band: the bed stands too close to the wardrobe. Select the room and
+press **Rearrange** to see layouts that fix it.
+
+## Non-goals
+
+- No accounts and no server. Layouts stay in your browser, your files and the
+  links you share.
+- No build step and no dependencies. The app is plain files that run from
+  `file://`.
+- No furniture catalog with brand products. Pieces are boxes with a size, a
+  height and clearance.
+- No photo-real rendering. The 3D view is for checking space, not for looks.
+
 ## Run
 
 Open `index.html` in a browser (double-click, or `firefox index.html`). That's it.
@@ -24,6 +42,12 @@ The app is four files that must stay in the same folder:
 - `rearrange.js`: the Rearrange engine.
 - `view3d.js`: the 3D view.
 
+They are plain `<script src>` files that share one global scope, not ES
+modules, so the app still runs straight from `file://` (tested in Firefox).
+`core.js` and `rearrange.js` load before the inline script in `index.html`,
+`view3d.js` after it. `core.js` and `rearrange.js` have no DOM code and never
+touch the app state.
+
 For the installed app there are also `manifest.webmanifest` (name, colours,
 icons), `icon.svg`, `icon-192.png`, `icon-512.png` and `sw.js`, the service
 worker. `sw.js` keeps a copy of all these files in a cache named by its
@@ -36,13 +60,8 @@ Change `VERSION` in `sw.js` (for example `mobel-1` to `mobel-2`) whenever you
 publish changed files. Browsers see that `sw.js` changed, cache the new files
 under the new name and delete the old cache. Without the change, the offline
 copy keeps the old files. If you add a file the app loads, add it to `FILES` in
-`sw.js` too.
-
-They are plain `<script src>` files that share one global scope, not ES
-modules, so the app still runs straight from `file://` (tested in Firefox).
-`core.js` and `rearrange.js` load before the inline script in `index.html`,
-`view3d.js` after it. `core.js` and `rearrange.js` have no DOM code and never
-touch the app state.
+`sw.js` too. Before you publish, run the
+[browser check](#browser-check-before-a-release).
 
 ## Test
 
@@ -50,11 +69,32 @@ touch the app state.
 node --test test/*.test.mjs
 ```
 
-Needs Node 18 or newer (tested on 24) and nothing else. The tests load `core.js`
-and `rearrange.js` the same way the page does, cut the 3D scene builder (which
-has no DOM code) out of `view3d.js` and the sample layout out of `index.html`,
-and check the results with their own box math. Old layout files in `test/fixtures` check that each file version still
-loads. The drawing and the pointer interaction have no automated tests.
+Needs Node 18 or newer and nothing else. CI runs the tests on Node 18 and 24,
+on every push and pull request. The tests load `core.js` and `rearrange.js` the
+same way the page does, cut the 3D scene builder (which has no DOM code) out of
+`view3d.js` and the sample layout out of `index.html`, and check the results
+with their own box math. Old layout files in `test/fixtures` check that each
+file version still loads. The drawing and the pointer interaction have no
+automated tests.
+
+## Browser check before a release
+
+The tests do not cover the page itself, so check it by hand before a release.
+Do it in Firefox, in Chrome, and in Safari on iOS, both from `file://` and
+from the Pages site.
+
+- [ ] The page opens with no errors in the console.
+- [ ] Add a piece, then drag, resize and rotate it.
+- [ ] A clearance band turns red when a piece stands in it.
+- [ ] Rearrange on a room: step with Prev and Next, and Apply one. Run it
+  again and Cancel.
+- [ ] 3D turns around the layout, and Walk moves with the keys.
+- [ ] On a phone: tap, drag, and pinch to zoom.
+- [ ] Export SVG and Export PNG save files that look like the plan.
+- [ ] Copy share link, then open the link in another browser.
+- [ ] Print shows the plan alone.
+- [ ] From Pages: install the app, go offline, and open it.
+- [ ] `VERSION` in `sw.js` has a new value.
 
 ## Use
 
@@ -126,7 +166,7 @@ loads. The drawing and the pointer interaction have no automated tests.
   reload does not ask again. A broken link shows a message and changes nothing.
 - Every change is undoable, and the layout is kept in `localStorage`, so a reload
   brings back the last session. **File ▾ → Reset to sample** goes back to the
-  demo room. **File ▾ → Print** prints the plan alone, without the interface, with the view
+  sample room. **File ▾ → Print** prints the plan alone, without the interface, with the view
   as it is on screen scaled to fit the page.
 - **Rearrange** (in a room's sidebar) looks for new layouts of the furniture in
   that room and shows the best five in place. **Prev** and **Next** (or the
@@ -169,6 +209,10 @@ loads. The drawing and the pointer interaction have no automated tests.
   pans. `Ctrl/⌘+S` still saves, and it saves the layout being previewed.
 
 ## Layout file
+
+Files saved by version 2 or later keep loading in later versions of Möbel.
+Later versions change the format only by adding fields: a field in a saved file
+keeps its name and its meaning.
 
 A saved layout is JSON:
 
@@ -265,6 +309,10 @@ Known limits of Rearrange:
 - A piece belongs to the room that holds its centre.
 - Search time grows with floor area: about 1 s for a 3 × 3 m room and 5 s for
   6 × 4.5 m (measured in Node).
+
+## Contributing
+
+See `CONTRIBUTING.md`.
 
 ## License
 
