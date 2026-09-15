@@ -127,6 +127,8 @@
     .rotate-handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: grab; }
     .rotate-stem { stroke: var(--accent); stroke-width: 1; pointer-events: none; }
     .hit { fill: none; stroke: transparent; pointer-events: stroke; }
+    .scale-bar { fill: none; stroke: var(--ink); stroke-width: 1.5; pointer-events: none; }
+    .scale-label { fill: var(--ink); font-family: var(--mono); pointer-events: none; user-select: none; }
 
     /* --- sidebar --- */
     #sidebar { background: var(--panel); border-left: 1px solid var(--border); padding: 14px; overflow-y: auto; }
@@ -239,6 +241,8 @@
             <g id="objects"></g>
             <g id="overlay"></g>
           </g>
+          <!-- at 100%, 100% the scale bar keeps to the corner at any plan size -->
+          <svg x="100%" y="100%" overflow="visible"><g id="scale"></g></svg>
         </svg>
         <canvas id="canvas3d" hidden></canvas>
         <p id="hint3d" hidden></p>
@@ -534,7 +538,7 @@ function restore() {
 const SVG_NS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
 const svg = $("canvas"), viewport = $("viewport");
-const gridGroup = $("grid"), objectsGroup = $("objects"), overlayGroup = $("overlay");
+const gridGroup = $("grid"), objectsGroup = $("objects"), overlayGroup = $("overlay"), scaleGroup = $("scale");
 const elObjCount = $("stat-count"), elZoom = $("stat-zoom"), elCursor = $("stat-cursor");
 
 /* ---------- geometry ---------- */
@@ -838,13 +842,26 @@ function renderOverlay() {
     overlayGroup.appendChild(g);
   }
 }
+// The scale bar in px, its right end 16 px left of (0, 0) and its bottom 16 px
+// above it. On the plan (0, 0) is the bottom right corner.
+function drawScale(g, zoom) {
+  const { cm, label } = scaleBar(zoom), len = cm * zoom;
+  g.appendChild(el("path", { d: `M ${-16 - len} -22 V -16 H -16 V -22`, class: "scale-bar", "vector-effect": "non-scaling-stroke" }));
+  const t = el("text", { x: -16 - len / 2, y: -26, class: "scale-label", "font-size": RULER_PX, "text-anchor": "middle" });
+  t.textContent = label;
+  g.appendChild(t);
+}
 function updateStatus() {
   elObjCount.textContent = String(state.objects.length);
   elZoom.textContent = `${Math.round(state.view.zoom * 100)}%`;
   $("btn-undo").disabled = !history.past.length;
   $("btn-redo").disabled = !history.future.length;
 }
-function render() { applyViewTransform(); drawGrid(); renderObjects(); renderOverlay(); updateStatus(); if (state.mode3d) draw3d(); }
+function render() {
+  applyViewTransform(); drawGrid(); renderObjects(); renderOverlay();
+  clearNode(scaleGroup); drawScale(scaleGroup, state.view.zoom);
+  updateStatus(); if (state.mode3d) draw3d();
+}
 function onChange() { render(); syncPanel(); if (!state.rearrange) autosave(); }
 
 /* ---------- view helpers ---------- */

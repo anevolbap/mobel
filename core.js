@@ -97,6 +97,15 @@ function contentBounds(objs) {
   }
   return { minX, minY, maxX, maxY };
 }
+// The scale bar shows the longest round length that is at most 160 px long at
+// `zoom` (px per cm), so the bar is 64 to 160 px. Zoomed out past 10 m it
+// stays 10 m, zoomed in past 10 cm it stays 10 cm.
+const SCALE_LENGTHS = [10, 20, 50, 100, 200, 500, 1000];
+function scaleBar(zoom) {
+  let cm = SCALE_LENGTHS[0];
+  for (const len of SCALE_LENGTHS) if (len * zoom <= 160) cm = len;
+  return { cm, label: cm < 100 ? `${cm} cm` : `${cm / 100} m` };
+}
 // Clearance bands, in the object's own frame (the group's rotate carries them).
 // One per side with a depth; corners are left open.
 function clearDepth(o, side) { return (o.clear && o.clear[side]) || 0; }

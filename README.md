@@ -49,6 +49,9 @@ loads. The drawing and the pointer interaction have no automated tests.
 - Drag a room's floor to pan, click its wall to select it. Furniture snaps to the
   inner face of the wall, so a sofa lands against it, not inside it.
 - Drag empty space to pan; scroll to zoom toward the cursor; **Fit** frames everything.
+- A scale bar in the bottom right corner of the plan shows a round length, from
+  10 cm to 10 m, that is 64 to 160 px long at the current zoom. It is printed
+  with the plan and keeps the printed scale.
 - Click to select; drag to move; drag the corner handle to resize; drag the round knob to rotate.
 - On a touch screen one finger works like the mouse: tap to select, drag an
   object to move it, drag empty space to pan. Pinch with two fingers to zoom,
