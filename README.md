@@ -86,7 +86,8 @@ loads. The drawing and the pointer interaction have no automated tests.
   never saved.
 - Every change is undoable, and the layout is kept in `localStorage`, so a reload
   brings back the last session. **File ▾ → Reset to sample** goes back to the
-  demo room. **File ▾ → Print** prints the plan alone, without the interface.
+  demo room. **File ▾ → Print** prints the plan alone, without the interface, with the view
+  as it is on screen scaled to fit the page.
 - **Rearrange** (in a room's sidebar) looks for new layouts of the furniture in
   that room and shows the best five in place. **Prev** and **Next** (or the
   arrow keys) step through them, **Apply** (or `Enter`) keeps one as a single

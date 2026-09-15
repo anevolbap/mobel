@@ -185,6 +185,7 @@
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
     @media print {
       #toolbar, #sidebar, #statusbar, #canvas3d, #hint3d { display: none; }
+      #app { grid-template-rows: 1fr; }   /* the plan gets the whole page height */
       #workspace { grid-template-columns: 1fr; }
       body, #canvas { background: #fff; }
     }
@@ -1270,6 +1271,10 @@ $("act-back").title = $("m-back").title = "Send to back";
 $("btn-undo").addEventListener("click", undo);
 $("btn-redo").addEventListener("click", redo);
 $("btn-print").addEventListener("click", () => { fitView(); window.print(); });
+// The page is not the size of the screen: a viewBox of the screen area scales
+// the view as it is on screen to fit the page.
+window.addEventListener("beforeprint", () => svg.setAttribute("viewBox", `0 0 ${svg.clientWidth} ${svg.clientHeight}`));
+window.addEventListener("afterprint", () => svg.removeAttribute("viewBox"));
 
 const btnMeasure = $("btn-measure");
 btnMeasure.innerHTML = icon("ruler") + "<span>Measure</span>";
