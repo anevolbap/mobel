@@ -87,14 +87,22 @@ loads. The drawing and the pointer interaction have no automated tests.
   clear span between two walls gives the exact number. Hold **Alt** to measure
   free. `Esc` clears the tape. Measurements are not part of the layout and are
   never saved.
-- **File ▾** has Save layout, Load layout, Export SVG, Export PNG, Print, Clear
-  all and Reset to sample.
+- **File ▾** has Save layout, Load layout, Export SVG, Export PNG, Copy share
+  link, Print, Clear all and Reset to sample.
 - **File ▾ → Export SVG** and **Export PNG** save the plan the way print shows
   it: grid, objects, clearance bands, labels and the scale bar, with no
   selection, handles or measure tape. The picture frames the whole layout with
   a margin. `layout.svg` is in centimetres and 1:20 on paper, and carries its
   own styles, so it opens on its own. `layout.png` has about 2 px per cm, at
   least 2000 px and at most 8000 px on the long side, on white.
+- **File ▾ → Copy share link** puts the whole layout into a link and copies it.
+  Where the browser does not allow the clipboard (some browsers from
+  `file://`), the link shows in a box to copy by hand. A link over 8000
+  characters still works, but a message says some chat apps may cut it off.
+  Opening a link loads its layout as one undo step, with the same checks as a
+  loaded file. If this browser holds a layout of its own that is not the
+  sample, Möbel asks first. Afterwards the layout leaves the address bar, so a
+  reload does not ask again. A broken link shows a message and changes nothing.
 - Every change is undoable, and the layout is kept in `localStorage`, so a reload
   brings back the last session. **File ▾ → Reset to sample** goes back to the
   demo room. **File ▾ → Print** prints the plan alone, without the interface, with the view
@@ -195,6 +203,11 @@ files are version 6; older files load. An object from a version 5 file picks up
 its type's `z` and `height`, a room from an older file picks up the
 default 15 cm walls, and a version 4 `clear: 80, face: "S"` becomes
 `clear: {N: 0, E: 0, S: 80, W: 0}`.
+
+A share link is the saved layout file, compressed with
+`CompressionStream("deflate")` and written in base64url after `#layout=`. It
+uses `deflate` and not `deflate-raw`, because Node 18 has only `deflate` and
+`gzip`.
 
 Room walls are four bands in the room's own frame, cut by interval subtraction
 wherever a door or window overlaps them, so an opening is a real gap and not a

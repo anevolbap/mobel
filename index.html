@@ -227,6 +227,7 @@
           <button id="btn-load" class="menu-item">Load layout…</button>
           <button id="btn-export-svg" class="menu-item">Export SVG</button>
           <button id="btn-export-png" class="menu-item">Export PNG</button>
+          <button id="btn-share" class="menu-item">Copy share link</button>
           <button id="btn-print" class="menu-item">Print</button>
           <button id="btn-clear" class="menu-item">Clear all</button>
           <button id="btn-sample" class="menu-item">Reset to sample</button>
@@ -395,6 +396,7 @@ const ICONS = {
   flip: '<path d="M12 3v18"/><path d="M16 8l4 4-4 4"/><path d="M8 8l-4 4 4 4"/>',
   undo: '<path d="M3 8h11a6 6 0 0 1 0 12H8"/><path d="M7 4L3 8l4 4"/>',
   redo: '<path d="M21 8H10a6 6 0 0 0 0 12h6"/><path d="M17 4l4 4-4 4"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1 1"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1-1"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>',
   print: '<path d="M7 8V3h10v5"/><path d="M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M7 15h10v6H7z"/>',
   front: '<path d="M12 2l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
@@ -1227,6 +1229,22 @@ function download(blob, name) {
   URL.revokeObjectURL(url);
 }
 function save() { download(new Blob([layoutJson(state.objects)], { type: "application/json" }), "layout.json"); }
+// A file or share link read by readLayout replaces the layout as one undo step.
+function openLayout({ objects, newer }) {
+  replaceObjects(objects);
+  checkpoint();
+  fitView();
+  if (newer) alert("This layout was made by a newer version of Möbel. Fields this version does not know were dropped, and saving will not keep them.");
+}
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try { openLayout(readLayout(JSON.parse(String(reader.result)))); }
+    catch (err) { alert(`Could not load layout: ${err.message || err}`); }
+  };
+  reader.onerror = () => alert("Could not read file.");
+  reader.readAsText(file);
+}
 
 /* ---------- export ---------- */
 // The plan as print shows it (grid, objects, scale bar; no selection, handles
@@ -1293,19 +1311,33 @@ function exportPng() {
   img.onerror = () => { URL.revokeObjectURL(url); alert("Could not draw the plan as a PNG."); };
   img.src = url;
 }
-function loadFile(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const { objects, newer } = readLayout(JSON.parse(String(reader.result)));
-      replaceObjects(objects);
-      checkpoint();
-      fitView();
-      if (newer) alert("This layout was made by a newer version of Möbel. Fields this version does not know were dropped, and saving will not keep them.");
-    } catch (err) { alert(`Could not load layout: ${err.message || err}`); }
-  };
-  reader.onerror = () => alert("Could not read file.");
-  reader.readAsText(file);
+
+/* ---------- share link ---------- */
+// The layout travels in the link's hash: #layout=<data>.
+async function copyShareLink() {
+  const url = `${location.href.split("#")[0]}#layout=${await encodeShare(state.objects)}`;
+  const long = url.length > 8000 ? " The link is very long, so some chat apps may cut it off." : "";
+  try {
+    await navigator.clipboard.writeText(url);
+    alert(`Share link copied.${long}`);
+  } catch (err) {                                  // no clipboard here, or it said no
+    prompt(`Copy this share link.${long}`, url);
+  }
+}
+// Opens the layout in a share link. The user's own layout is only replaced
+// after asking. The hash goes away afterwards, so a reload does not ask again.
+async function openShareLink() {
+  if (!location.hash.startsWith("#layout=")) return;
+  try {
+    const layout = readLayout(await decodeShare(location.hash.slice("#layout=".length)));
+    const mine = layoutJson(sanitizeObjects(state.objects));
+    if (mine === sampleJson || mine === layoutJson(layout.objects)
+      || confirm("Open the shared layout? It replaces the layout in this browser. Save yours first if you want to keep it.")) {
+      finishRearrange(false);                      // a preview still open in this tab ends first
+      openLayout(layout);
+    }
+  } catch (err) { alert(`Could not open the shared layout: ${err.message || err}`); }
+  window.history.replaceState(null, "", location.pathname + location.search);   // `history` is the undo stack
 }
 
 /* ---------- toolbar wiring ---------- */
@@ -1329,6 +1361,7 @@ $("btn-save").innerHTML = icon("download") + "<span>Save layout</span>";
 $("btn-load").innerHTML = icon("upload") + "<span>Load layout</span>";
 $("btn-export-svg").innerHTML = icon("image") + "<span>Export SVG</span>";
 $("btn-export-png").innerHTML = icon("image") + "<span>Export PNG</span>";
+$("btn-share").innerHTML = icon("link") + "<span>Copy share link</span>";
 $("btn-print").innerHTML = icon("print") + "<span>Print</span>";
 $("btn-clear").innerHTML = icon("trash") + "<span>Clear all</span>";
 $("btn-sample").innerHTML = icon("sample") + "<span>Reset to sample</span>";
@@ -1454,6 +1487,7 @@ $("btn-fit").addEventListener("click", fitView);
 $("btn-save").addEventListener("click", save);
 $("btn-export-svg").addEventListener("click", exportSvg);
 $("btn-export-png").addEventListener("click", exportPng);
+$("btn-share").addEventListener("click", copyShareLink);
 const fileInput = $("file-input");
 $("btn-load").addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => { const f = fileInput.files[0]; if (f) loadFile(f); fileInput.value = ""; });
@@ -1485,9 +1519,13 @@ function seed() {
   place("furniture", 95, 120, { w: 45, h: 45, label: "Chair", color: "#16a34a" });
   place("bookshelf", 296, 30, { w: 92, h: 28, label: "Shelf" });
 }
-if (restore()) onChange(); else { seed(); fitView(); }
+seed();
+const sampleJson = layoutJson(sanitizeObjects(state.objects));   // a share link replaces the sample without asking
+if (restore()) onChange(); else fitView();
 mark = snapshot();   // the starting layout is the undo baseline
 updateStatus();
+openShareLink();
+window.addEventListener("hashchange", openShareLink);
 </script>
 <script src="view3d.js"></script>
 </body>

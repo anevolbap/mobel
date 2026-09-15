@@ -238,3 +238,24 @@ function readLayout(doc) {
 function layoutJson(objects) {
   return JSON.stringify({ app: "moebel", version: LAYOUT_VERSION, units: "cm", objects }, null, 2);
 }
+
+/* ---------- share links ---------- */
+// A layout in a link: the saved file, deflated and in base64url (no + / =).
+// "deflate" and not "deflate-raw", which Node 18 does not have.
+async function encodeShare(objects) {
+  const stream = new Blob([layoutJson(objects)]).stream().pipeThrough(new CompressionStream("deflate"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+// The file inside a share link, for readLayout. Throws when the link is broken.
+async function decodeShare(data) {
+  try {
+    const bin = atob(data.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((data.length + 3) % 4));
+    const stream = new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream("deflate"));
+    return JSON.parse(await new Response(stream).text());
+  } catch (err) {
+    throw new Error("The link is broken or cut off.");
+  }
+}
