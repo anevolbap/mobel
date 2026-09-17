@@ -73,13 +73,76 @@ function openingParts(o) {
   }
   return parts.filter((p) => p.w > 0 && p.h > 0 && p.z1 > p.z0);
 }
+// Furniture as a few boxes, so it reads as a bed or a table in 3D and in walk
+// mode. Every part stays inside the footprint and the height, and together
+// they cover the footprint, so walking bumps into it as before. The front is
+// south (+y), where the type's clearance usually is; a bed's head is north.
+const LEG_CM = 5, TOP_CM = 4, DARK = -0.25, LIGHT = 0.3, PALE = 0.7;
+function pieceParts(o) {
+  const W = o.w, D = o.h, H = o.height, parts = [];
+  // x across, y from back to front, z up from the piece's bottom; tone < 0 darker, > 0 lighter
+  const box = (x0, y0, x1, y1, z0, z1, tone = 0) => parts.push({ x: o.x + x0, y: o.y + y0, w: x1 - x0, h: y1 - y0, z0, z1, tone });
+  const L = Math.min(LEG_CM, W / 4, D / 4), T = Math.min(TOP_CM, H / 4);
+  const legs = () => { for (const [x, y] of [[0, 0], [W - L, 0], [0, D - L], [W - L, D - L]]) box(x, y, x + L, y + L, 0, H - T, DARK); };
+  if (o.type === "table" || o.type === "desk") {
+    box(0, 0, W, D, H - T, H);
+    legs();
+    if (o.type === "desk") box(L, 0, W - L, Math.min(2, D / 10), H * 0.35, H - T, DARK);   // back panel
+  } else if (o.type === "bed") {
+    const hb = Math.min(6, D / 10), m = Math.min(2, W / 20);
+    box(0, 0, W, hb, 0, H, DARK);                           // headboard
+    box(0, hb, W, D, 0, H * 0.45, DARK);                    // base
+    box(m, hb, W - m, D - m, H * 0.45, H * 0.9, PALE);      // mattress
+    const n = W >= 120 ? 2 : 1, gap = Math.min(5, W / 20), pw = (W - 2 * m - (n + 1) * gap) / n, pd = Math.min(40, D / 4);
+    for (let i = 0; i < n; i++) {
+      const x = m + gap + i * (pw + gap);
+      box(x, hb + gap, x + pw, hb + gap + pd, H * 0.9, H, 0.9);   // pillows
+    }
+  } else if (o.type === "sofa") {
+    const B = Math.min(20, D / 4), A = Math.min(15, W / 6);
+    box(0, 0, W, B, 0, H);                                  // back
+    box(0, B, A, D, 0, H * 0.7);                            // arms
+    box(W - A, B, W, D, 0, H * 0.7);
+    box(A, B, W - A, D, 0, H * 0.3, DARK);                  // base
+    const n = Math.max(1, Math.round((W - 2 * A) / 60)), cw = (W - 2 * A) / n;
+    for (let i = 0; i < n; i++) box(A + i * cw, B, A + (i + 1) * cw - (i < n - 1 ? 1 : 0), D, H * 0.3, H * 0.5, LIGHT);   // cushions
+  } else if (o.type === "wardrobe" || o.type === "fridge") {
+    const F = Math.min(2, D / 10), K = Math.min(1, D / 20), yd = D - F - K;   // door and handle depth
+    box(0, 0, W, yd, 0, H);                                 // body, seen in the gaps between doors
+    const handle = (x, z0, z1) => box(x, D - K, x + 1.5, D, z0, z1, DARK);
+    if (o.type === "wardrobe") {
+      box(0, yd, W / 2 - 0.5, D - K, 0, H, LIGHT);
+      box(W / 2 + 0.5, yd, W, D - K, 0, H, LIGHT);
+      handle(W / 2 - 3, H * 0.45, H * 0.6);
+      handle(W / 2 + 1.5, H * 0.45, H * 0.6);
+    } else {
+      box(0, yd, W, D - K, 0, H * 0.62 - 0.5, LIGHT);        // fridge below, freezer above
+      box(0, yd, W, D - K, H * 0.62 + 0.5, H, LIGHT);
+      handle(W - 8, H * 0.45, H * 0.6);
+      handle(W - 8, H * 0.65, H * 0.8);
+    }
+  } else if (o.type === "bookshelf") {
+    const S = Math.min(2, W / 10, H / 4), P = Math.min(1.5, D / 10), n = Math.max(1, Math.round(H / 35)), step = (H - S) / n;
+    box(0, 0, S, D, 0, H);                                  // sides
+    box(W - S, 0, W, D, 0, H);
+    box(S, 0, W - S, P, 0, H, DARK);                        // back
+    for (let i = 0; i <= n; i++) box(S, P, W - S, D, i * step, i * step + S);   // boards
+    for (let i = 0; i < n; i++) {                           // a row of books on each shelf
+      const bw = (W - 2 * S) * 0.7, x = i % 2 ? W - S - bw : S;
+      box(x, P, x + bw, P + (D - P) * 0.75, i * step + S, i * step + S + (step - S) * 0.7, i % 2 ? LIGHT : DARK);
+    }
+  } else {
+    box(0, 0, W, D, 0, H);
+  }
+  return parts.filter((p) => p.w > 0 && p.h > 0 && p.z1 > p.z0);
+}
 // Everything to draw, as boxes: centre and size in plan (w along the box's own
 // x, d along its own y), turned by rot degrees, from y0 up to y1.
 function sceneBoxes(objects) {
   const out = [];
-  const add = (o, r, y0, y1, color, kind) => {   // r is in o's own frame
+  const add = (o, r, y0, y1, color, kind, tone) => {   // r is in o's own frame
     const c = rotatePoint(r.x + r.w / 2, r.y + r.h / 2, o.x + o.w / 2, o.y + o.h / 2, o.rot || 0);
-    out.push({ cx: c.x, cy: c.y, w: r.w, d: r.h, rot: o.rot || 0, y0, y1, color, kind });
+    out.push({ cx: c.x, cy: c.y, w: r.w, d: r.h, rot: o.rot || 0, y0, y1, color, kind, tone });
   };
   const walls = (o, bands, color) => {
     const ops = openings3d(o, objects);
@@ -97,7 +160,8 @@ function sceneBoxes(objects) {
     } else if (OPENINGS.has(o.type)) {
       for (const p of openingParts(o)) add(o, p, p.z0, p.z1, p.kind === "glass" ? GLASS_3D : o.color, p.kind);
     } else {
-      add(o, o, o.z || 0, (o.z || 0) + o.height, o.color, "piece");
+      const z = o.z || 0;
+      for (const p of pieceParts(o)) add(o, p, z + p.z0, z + p.z1, o.color, "piece", p.tone);
     }
   }
   return out;
@@ -201,6 +265,7 @@ function pushBox(out, b) {
   const r = ((b.rot || 0) * Math.PI) / 180, cos = Math.cos(r), sin = Math.sin(r);
   const color = rgb(b.color);
   if (b.kind === "floor") for (let i = 0; i < 3; i++) color[i] += (1 - color[i]) * 0.6;
+  if (b.tone) for (let i = 0; i < 3; i++) color[i] += ((b.tone > 0 ? 1 : 0) - color[i]) * Math.abs(b.tone);
   const corner = (i) => {
     const lx = (i & 1 ? 0.5 : -0.5) * b.w, lz = (i & 4 ? 0.5 : -0.5) * b.d;
     return [b.cx + lx * cos - lz * sin, i & 2 ? b.y1 : b.y0, b.cy + lx * sin + lz * cos];

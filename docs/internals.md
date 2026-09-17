@@ -53,6 +53,13 @@ slice keeps the heights that no opening covers. A plain wall is cut the same
 way, so a door in a partition is a real gap in 3D. A room with wall thickness 0
 still gets thin 10 cm walls in 3D, just outside its outline.
 
+A furniture piece is a few boxes from `pieceParts()` (legs and a top, a base
+and a mattress, and so on), sized from its width, depth and height. The parts
+never leave the footprint or the height, so Rearrange and the window rule still
+see the same piece. Together the parts cover the footprint above knee height
+(a mattress sits 2 cm in from the bed's sides), so walking collides almost as it
+did with one box. The generic Furniture type stays one box.
+
 Walk moves at 70 cm per second with an 80° view (40° to 110° with scroll). It
 collides with anything that crosses the band from 30 to 180 cm above the floor.
 

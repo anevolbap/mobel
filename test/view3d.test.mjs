@@ -19,6 +19,7 @@ const src = [
   ";({ sceneBoxes, walkBlocked, walkStep })",
 ].join("\n");
 const E = vm.runInThisContext(`(() => {\n${src}\n})()`.replace(";({", "return ({"));
+const { TYPES, TYPE_KEYS } = vm.runInThisContext("({ TYPES, TYPE_KEYS })");
 
 function obj(id, type, x, y, w, h, extra = {}) {
   return { id, type, label: type, x, y, w, h, z: 0, height: 75, rot: 0, flip: 0, color: "#336699", clear: { N: 0, E: 0, S: 0, W: 0 }, wall: 0, ...extra };
@@ -81,13 +82,42 @@ test("walls fill the whole band around the openings", () => {
   assert.equal(north, 420 * 250 - 120 * 120);
 });
 
+// The plan and height extent of all the parts of one piece: [x0, x1, y0, y1, z0, z1].
+function extent(boxes) {
+  const r = (v) => Math.round(v * 1000) / 1000;
+  return [
+    Math.min(...boxes.map((b) => b.cx - b.w / 2)), Math.max(...boxes.map((b) => b.cx + b.w / 2)),
+    Math.min(...boxes.map((b) => b.cy - b.d / 2)), Math.max(...boxes.map((b) => b.cy + b.d / 2)),
+    Math.min(...boxes.map((b) => b.y0)), Math.max(...boxes.map((b) => b.y1)),
+  ].map(r);
+}
+
 test("furniture stands at its height and a room has a floor", () => {
-  const boxes = E.sceneBoxes([...room(), obj(5, "bookshelf", 20, 20, 80, 30, { z: 120, height: 40 })]);
-  const bed = boxes.find((b) => b.kind === "piece" && b.w === 140);
-  assert.deepEqual([bed.cx, bed.cy, bed.y0, bed.y1], [320, 195, 0, 50]);
-  const shelf = boxes.find((b) => b.kind === "piece" && b.w === 80);
-  assert.deepEqual([shelf.y0, shelf.y1], [120, 160]);
-  assert.equal(boxes.filter((b) => b.kind === "floor").length, 1);
+  const bed = E.sceneBoxes([obj(4, "bed", 250, 100, 140, 190, { height: 50 })]);
+  assert.deepEqual(extent(bed), [250, 390, 100, 290, 0, 50]);
+  const shelf = E.sceneBoxes([obj(5, "bookshelf", 20, 20, 80, 30, { z: 120, height: 40 })]);
+  assert.deepEqual(extent(shelf), [20, 100, 20, 50, 120, 160]);
+  assert.equal(E.sceneBoxes(room()).filter((b) => b.kind === "floor").length, 1);
+});
+
+test("every furniture type fills its footprint and height, with no part outside", () => {
+  for (const type of TYPE_KEYS.filter((t) => TYPES[t].piece)) {
+    for (const [w, h, height] of [[TYPES[type].w, TYPES[type].h, TYPES[type].height], [200, 40, 30], [10, 10, 10]]) {
+      const boxes = E.sceneBoxes([obj(1, type, 10, 20, w, h, { z: 5, height })]);
+      assert.ok(boxes.length > 0, type);
+      for (const b of boxes) assert.ok(b.w > 0 && b.d > 0 && b.y1 > b.y0, `${type} ${w}x${h}: empty part`);
+      assert.deepEqual(extent(boxes), [10, 10 + w, 20, 20 + h, 5, 5 + height], `${type} ${w}x${h}x${height}`);
+    }
+  }
+});
+
+test("walking: blocked by a table, a desk and a sofa, up close", () => {
+  for (const type of ["table", "desk", "sofa"]) {
+    const boxes = E.sceneBoxes([obj(1, type, 0, 0, 120, 80, { height: 75 })]);
+    assert.equal(E.walkBlocked(boxes, 60, 40), true, `${type}: middle`);
+    assert.equal(E.walkBlocked(boxes, 60, 95), true, `${type}: 15 cm in front`);
+    assert.equal(E.walkBlocked(boxes, 60, 105), false, `${type}: 25 cm in front`);
+  }
 });
 
 test("walking: blocked by walls, windows and furniture, free through a door", () => {
