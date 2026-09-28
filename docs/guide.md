@@ -87,7 +87,8 @@ Limits:
   cut the walls at their own heights. Beds, sofas, desks, tables, wardrobes,
   fridges and bookshelves get a simple shape of their own. Their front is the
   bottom side of the plan (a bed's head is at the top), so rotate a piece to
-  turn it. The sidebar still edits the selected object. Press **3D** again to
+  turn it. Walls between you and the room turn see-through as you orbit, so
+  you look inside from any side. The sidebar still edits the selected object. Press **3D** again to
   go back to the plan.
 - **Walk** puts you at eye height (160 cm). Click the view to look with the
   mouse, or drag if the browser does not lock the pointer. `W` `A` `S` `D` or

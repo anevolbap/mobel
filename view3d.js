@@ -142,12 +142,14 @@ function sceneBoxes(objects) {
   const out = [];
   const add = (o, r, y0, y1, color, kind, tone) => {   // r is in o's own frame
     const c = rotatePoint(r.x + r.w / 2, r.y + r.h / 2, o.x + o.w / 2, o.y + o.h / 2, o.rot || 0);
-    out.push({ cx: c.x, cy: c.y, w: r.w, d: r.h, rot: o.rot || 0, y0, y1, color, kind, tone });
+    const b = { cx: c.x, cy: c.y, w: r.w, d: r.h, rot: o.rot || 0, y0, y1, color, kind, tone };
+    out.push(b);
+    return b;
   };
   const walls = (o, bands, color) => {
     const ops = openings3d(o, objects);
     for (const band of bands) {
-      for (const p of wallSlices(band, o.height, ops)) add(o, p, p.z0, p.z1, color, "wall");
+      for (const p of wallSlices(band, o.height, ops)) add(o, p, p.z0, p.z1, color, "wall").axis = band.axis;
     }
   };
   for (const o of objects) {
@@ -165,6 +167,17 @@ function sceneBoxes(objects) {
     }
   }
   return out;
+}
+
+// Orbit: a wall between the camera and what it looks at goes see-through. In
+// plan, the eye and the target stand on opposite sides of the wall's line.
+function wallHidesView(b, eye, target) {
+  if (b.kind !== "wall") return false;
+  const r = (b.rot * Math.PI) / 180, along = b.axis === "x";   // the wall runs along its own x
+  const nx = along ? -Math.sin(r) : Math.cos(r), ny = along ? Math.cos(r) : Math.sin(r);
+  const half = (along ? b.d : b.w) / 2;
+  const e = (eye.x - b.cx) * nx + (eye.y - b.cy) * ny, t = (target.x - b.cx) * nx + (target.y - b.cy) * ny;
+  return (e > half && t < -half) || (e < -half && t > half);
 }
 
 // Walking: a person is a circle in plan. Only things between the knees and the
@@ -191,7 +204,7 @@ function walkStep(boxes, x, y, dx, dy) {
 
 /* ---------- 3d: drawing ---------- */
 const v3 = {
-  gl: null, prog: null, buf: null, opaque: 0, glass: 0,
+  gl: null, prog: null, buf: null, opaque: 0, faded: 0, glass: 0, fadedKey: null,
   yaw: 0, pitch: 0.95, dist: 1000, tx: 0, ty: 0,   // orbit camera: radians, cm; target in plan
   boxes: [], eye: { x: 0, y: 0 }, look: 0,          // walk: where you stand in plan, and how far up you look
   fov: WALK.FOV,                                    // walk: degrees, the scroll wheel changes it
@@ -275,16 +288,19 @@ function pushBox(out, b) {
     for (const i of [idx[0], idx[1], idx[2], idx[0], idx[2], idx[3]]) out.push(...corner(i), ...n, ...color);
   }
 }
-function upload3d(boxes) {
+function upload3d(boxes, faded) {
   const data = [];
-  for (const b of boxes) if (b.kind !== "glass") pushBox(data, b);
+  for (const [i, b] of boxes.entries()) if (b.kind !== "glass" && !faded[i]) pushBox(data, b);
   const opaque = data.length / 9;
+  for (const [i, b] of boxes.entries()) if (faded[i]) pushBox(data, b);
+  const walls = data.length / 9 - opaque;
   for (const b of boxes) if (b.kind === "glass") pushBox(data, b);
   const gl = v3.gl;
   gl.bindBuffer(gl.ARRAY_BUFFER, v3.buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
   v3.opaque = opaque;
-  v3.glass = data.length / 9 - opaque;
+  v3.faded = walls;
+  v3.glass = data.length / 9 - opaque - walls;
 }
 // Both cameras face (-sin yaw, -cos yaw) in plan, so walking starts the way the orbit looked.
 function camera3d() {
@@ -308,6 +324,10 @@ function drawFrame() {
   gl.enable(gl.DEPTH_TEST);
   gl.useProgram(v3.prog);
   const cam = camera3d();
+  // Which walls are in the way depends on the camera, so the buffer follows it.
+  const faded = v3.boxes.map((b) => state.mode3d === "orbit" && wallHidesView(b, { x: cam.eye[0], y: cam.eye[2] }, { x: cam.target[0], y: cam.target[2] }));
+  const key = faded.join();
+  if (key !== v3.fadedKey) { upload3d(v3.boxes, faded); v3.fadedKey = key; }
   gl.uniformMatrix4fv(gl.getUniformLocation(v3.prog, "uMatrix"), false,
     mul4(perspective(cam.fov, W / H, cam.near, 100000), lookAt(cam.eye, cam.target)));
   gl.bindBuffer(gl.ARRAY_BUFFER, v3.buf);
@@ -321,19 +341,21 @@ function drawFrame() {
   gl.disable(gl.BLEND);
   gl.depthMask(true);
   if (v3.opaque) gl.drawArrays(gl.TRIANGLES, 0, v3.opaque);
-  if (v3.glass) {   // see-through, drawn last and without hiding what is behind it
+  if (v3.faded || v3.glass) {   // see-through, drawn last and without hiding what is behind it
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
+    gl.uniform1f(alpha, 0.12);
+    if (v3.faded) gl.drawArrays(gl.TRIANGLES, v3.opaque, v3.faded);
     gl.uniform1f(alpha, 0.35);
-    gl.drawArrays(gl.TRIANGLES, v3.opaque, v3.glass);
+    if (v3.glass) gl.drawArrays(gl.TRIANGLES, v3.opaque + v3.faded, v3.glass);
     gl.depthMask(true);
   }
 }
 // Called from render() in index.html whenever the layout or the window changes.
 function draw3d() {
   v3.boxes = sceneBoxes(state.objects);
-  upload3d(v3.boxes);
+  v3.fadedKey = null;   // new boxes: drawFrame uploads them
   drawFrame();
 }
 

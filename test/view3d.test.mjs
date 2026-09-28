@@ -16,7 +16,7 @@ function section(script, start, end) {
 }
 const src = [
   section(view, "/* ---------- 3d: scene", "/* ---------- 3d: drawing"),
-  ";({ sceneBoxes, walkBlocked, walkStep })",
+  ";({ sceneBoxes, walkBlocked, walkStep, wallHidesView })",
 ].join("\n");
 const E = vm.runInThisContext(`(() => {\n${src}\n})()`.replace(";({", "return ({"));
 const { TYPES, TYPE_KEYS } = vm.runInThisContext("({ TYPES, TYPE_KEYS })");
@@ -149,4 +149,29 @@ test("a turned room cuts its walls where the door is", () => {
   objs.splice(2, 1);
   const boxes = E.sceneBoxes(objs);
   assert.deepEqual(spans(boxes, "wall", { x: 40, y: 110, w: 20, h: 80 }), [[210, 250]]);
+});
+
+// The room walls that go see-through, by side: N (y 0), S (y 300), W (x 0), E (x 400).
+function fadedSides(objs, eye, target = { x: 200, y: 150 }) {
+  const near = (a, b) => Math.abs(a - b) < 11;
+  const side = (b) => (near(b.cy, 0) ? "N" : near(b.cy, 300) ? "S" : near(b.cx, 0) ? "W" : near(b.cx, 400) ? "E" : "?");
+  return [...new Set(E.sceneBoxes(objs).filter((b) => E.wallHidesView(b, eye, target)).map(side))].sort();
+}
+
+test("orbit: the walls between the camera and the room go see-through", () => {
+  assert.deepEqual(fadedSides(room(), { x: 200, y: 1500 }), ["S"]);
+  assert.deepEqual(fadedSides(room(), { x: 1500, y: 1500 }), ["E", "S"]);
+  assert.deepEqual(fadedSides(room(), { x: -900, y: -900 }), ["N", "W"]);
+  assert.deepEqual(fadedSides(room(), { x: 100, y: 100 }), [], "camera inside the room");
+});
+
+test("orbit: a turned room and a plain wall fade the same way", () => {
+  // Turned 90°, the room's south wall runs along x = 50 (see the door test above).
+  const faded = E.sceneBoxes(room(90)).filter((b) => E.wallHidesView(b, { x: -1500, y: 150 }, { x: 200, y: 150 }));
+  assert.ok(faded.length > 0 && faded.every((b) => Math.abs(b.cx - 50) < 11));
+  const wall = E.sceneBoxes([obj(5, "wall", 0, 500, 300, 12, { height: 250 })]);
+  assert.equal(E.wallHidesView(wall[0], { x: 150, y: 1500 }, { x: 150, y: 150 }), true);
+  assert.equal(E.wallHidesView(wall[0], { x: 150, y: 1500 }, { x: 150, y: 1000 }), false, "the target is in front of it");
+  const others = E.sceneBoxes(room()).filter((b) => b.kind !== "wall");
+  assert.equal(others.some((b) => E.wallHidesView(b, { x: 200, y: 1500 }, { x: 200, y: 150 })), false, "only walls fade");
 });

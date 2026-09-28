@@ -60,6 +60,12 @@ see the same piece. Together the parts cover the footprint above knee height
 (a mattress sits 2 cm in from the bed's sides), so walking collides almost as it
 did with one box. The generic Furniture type stays one box.
 
+In orbit, `wallHidesView()` fades a wall slice when the camera and the orbit
+target stand on opposite sides of the wall's line in plan. From outside a room
+that picks the one or two near walls. Faded walls draw after the solid boxes at
+12% opacity, like glass. The buffer is uploaded again only when the set of faded
+walls changes, not on every frame of a drag. Door and window frames stay solid.
+
 Walk moves at 70 cm per second with an 80° view (40° to 110° with scroll). It
 collides with anything that crosses the band from 30 to 180 cm above the floor.
 
