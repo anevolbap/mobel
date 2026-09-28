@@ -41,6 +41,7 @@ There is nothing to install or build.
 - [Layout file](docs/file-format.md): the saved JSON format.
 - [How it works](docs/internals.md): code layout, Rearrange scoring, 3D.
 - [Release](docs/release.md): how to publish a new version.
+- [Roadmap](docs/roadmap.md): ideas for future versions.
 - [Contributing](CONTRIBUTING.md): tests and rules for pull requests.
 
 ## License
